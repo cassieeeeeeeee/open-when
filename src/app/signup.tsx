@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PasswordField } from '@/components/openwhen/PasswordField';
 import { Logo } from '@/components/openwhen/ui';
 import { Font, OW, Radius } from '@/constants/openwhen';
 import { useAuth } from '@/lib/auth';
@@ -18,6 +19,7 @@ export default function SignupScreen() {
   const insets = useSafeAreaInsets();
   const { signUp } = useAuth();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +29,7 @@ export default function SignupScreen() {
     setError(null);
     setBusy(true);
     try {
-      await signUp(name, email, password);
+      await signUp(name, username, email, password);
       // The auth gate redirects to Home once the account is created.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create account.');
@@ -52,6 +54,17 @@ export default function SignupScreen() {
         placeholderTextColor={OW.muted}
       />
 
+      <Text style={styles.label}>Username</Text>
+      <TextInput
+        style={styles.input}
+        value={username}
+        onChangeText={setUsername}
+        placeholder="lowercase letters, numbers, _"
+        placeholderTextColor={OW.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
       <Text style={styles.label}>Email</Text>
       <TextInput
         style={styles.input}
@@ -65,14 +78,7 @@ export default function SignupScreen() {
       />
 
       <Text style={styles.label}>Password</Text>
-      <TextInput
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="At least 6 characters"
-        placeholderTextColor={OW.muted}
-        secureTextEntry
-      />
+      <PasswordField value={password} onChangeText={setPassword} placeholder="At least 6 characters" />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 

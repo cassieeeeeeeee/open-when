@@ -89,14 +89,19 @@ export type NewCapsule = {
   tone: Tone;
   locked?: boolean;
   personId?: string;
+  recipientId?: string;
+  recipientUsername?: string;
+  recipientEmail?: string;
   contents?: CapsuleContent[];
 };
 
 /** Create a capsule owned by the current user. Returns the new doc id (or null if offline). */
 export async function createCapsule(input: NewCapsule): Promise<string | null> {
   if (!db || !auth?.currentUser) return null;
+  // Firestore rejects fields whose value is `undefined`, so drop them before writing.
+  const clean = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
   const ref = await addDoc(collection(db, COLLECTION), {
-    ...input,
+    ...clean,
     ownerId: auth.currentUser.uid,
     direction: 'created',
     status: 'sealed',

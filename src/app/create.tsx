@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BigEnvelope,
   CloseIcon,
-  GradientAvatar,
   HeartIcon,
   ImageIcon,
   MicIcon,
@@ -16,7 +15,7 @@ import {
 import { DateField } from '@/components/openwhen/DateField';
 import { Font, OW, Radius, Tone, TONES } from '@/constants/openwhen';
 import { createCapsule } from '@/lib/capsules';
-import { people } from '@/data/sample';
+import { findRecipient, type Recipient } from '@/lib/users';
 
 const MSG_TYPES: { key: string; label: string; tone: Tone; Icon: typeof PencilIcon }[] = [
   { key: 'write', label: 'Write', tone: 'lilac', Icon: PencilIcon },
@@ -31,13 +30,65 @@ export default function CreateScreen() {
 
   const [title, setTitle] = useState('Open on your wedding day');
   const [note, setNote] = useState("I can't wait to see the amazing life you're going to build.");
-  const [recipient, setRecipient] = useState('');
-  const [recipientId, setRecipientId] = useState<string | undefined>(undefined);
+  const [recipientQuery, setRecipientQuery] = useState('');
+  const [recipient, setRecipient] = useState<Recipient | null>(null);
+  const [lookup, setLookup] = useState<'idle' | 'searching' | 'notfound'>('idle');
+  const [saving, setSaving] = useState(false);
   const [unlockDate, setUnlockDate] = useState(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() + 1);
     return d;
   });
+
+  const resolveRecipient = async () => {
+    const q = recipientQuery.trim();
+    if (!q) return;
+    setLookup('searching');
+    try {
+      const found = await findRecipient(q);
+      if (found) {
+        setRecipient(found);
+        setLookup('idle');
+      } else {
+        setLookup('notfound');
+      }
+    } catch {
+      setLookup('notfound');
+    }
+  };
+
+  const clearRecipient = () => {
+    setRecipient(null);
+    setRecipientQuery('');
+    setLookup('idle');
+  };
+
+  const create = async () => {
+    if (saving) return;
+    setSaving(true);
+    // If they typed someone but didn't tap Find, try to resolve it now.
+    let to = recipient;
+    if (!to && recipientQuery.trim()) {
+      try {
+        to = await findRecipient(recipientQuery);
+      } catch {
+        to = null;
+      }
+    }
+    await createCapsule({
+      title: title.trim() || 'Untitled capsule',
+      who: to?.displayName || to?.username || recipientQuery.trim() || 'Someone special',
+      date: unlockDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      tone: 'pink',
+      recipientId: to?.uid,
+      recipientUsername: to?.username,
+      recipientEmail: to?.email,
+      contents: note.trim() ? [{ type: 'text', label: 'A note', preview: note.trim() }] : undefined,
+    });
+    router.back();
+  };
+
+  const initial = (recipient?.displayName || recipient?.username || '?').charAt(0).toUpperCase();
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 4 }]}>
@@ -66,34 +117,57 @@ export default function CreateScreen() {
           placeholderTextColor={OW.muted}
         />
 
-        <Text style={styles.label}>For</Text>
-        <TextInput
-          style={styles.input}
-          value={recipient}
-          onChangeText={(t) => {
-            setRecipient(t);
-            setRecipientId(undefined);
-          }}
-          placeholder="Who is this for?"
-          placeholderTextColor={OW.muted}
-        />
-        <View style={styles.people}>
-          {people.map((p) => {
-            const on = recipientId === p.id;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => {
-                  setRecipient(p.name);
-                  setRecipientId(p.id);
+        <Text style={styles.label}>Send to</Text>
+        {recipient ? (
+          <View style={styles.found}>
+            <View style={styles.foundAvatar}>
+              <Text style={styles.foundInitial}>{initial}</Text>
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.foundName} numberOfLines={1}>
+                {recipient.displayName || recipient.username || recipient.email}
+              </Text>
+              {recipient.username ? (
+                <Text style={styles.foundHandle} numberOfLines={1}>
+                  @{recipient.username}
+                </Text>
+              ) : null}
+            </View>
+            <Pressable onPress={clearRecipient} hitSlop={8} accessibilityLabel="Clear recipient">
+              <CloseIcon size={16} color={OW.muted} />
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={styles.searchRow}>
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={recipientQuery}
+                onChangeText={(t) => {
+                  setRecipientQuery(t);
+                  if (lookup === 'notfound') setLookup('idle');
                 }}
-                style={[styles.contact, on && styles.contactOn]}>
-                <GradientAvatar size={22} from={p.from} to={p.to} />
-                <Text style={[styles.contactName, on && styles.contactNameOn]}>{p.name}</Text>
+                placeholder="@username or email"
+                placeholderTextColor={OW.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                onSubmitEditing={resolveRecipient}
+                returnKeyType="search"
+              />
+              <Pressable style={styles.findBtn} onPress={resolveRecipient} disabled={lookup === 'searching'}>
+                <Text style={styles.findText}>{lookup === 'searching' ? '…' : 'Find'}</Text>
               </Pressable>
-            );
-          })}
-        </View>
+            </View>
+            {lookup === 'notfound' ? (
+              <Text style={styles.notFound}>
+                No account found. Check the spelling — or they may not be on Open When yet.
+              </Text>
+            ) : (
+              <Text style={styles.hint}>Find someone by their @username or email.</Text>
+            )}
+          </>
+        )}
 
         <Text style={styles.label}>Unlock on</Text>
         <DateField value={unlockDate} onChange={setUnlockDate} />
@@ -119,25 +193,10 @@ export default function CreateScreen() {
         />
 
         <Pressable
-          style={styles.createBtn}
-          onPress={async () => {
-            await createCapsule({
-              title: title.trim() || 'Untitled capsule',
-              who: recipient.trim() || 'Someone special',
-              date: unlockDate.toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              }),
-              tone: 'pink',
-              personId: recipientId,
-              contents: note.trim()
-                ? [{ type: 'text', label: 'A note', preview: note.trim() }]
-                : undefined,
-            });
-            router.back();
-          }}>
-          <Text style={styles.createText}>Create Capsule</Text>
+          style={[styles.createBtn, saving && styles.createBtnBusy]}
+          onPress={create}
+          disabled={saving}>
+          <Text style={styles.createText}>{saving ? 'Creating…' : 'Create Capsule'}</Text>
           <HeartIcon size={14} color="#fff" />
         </Pressable>
       </ScrollView>
@@ -146,6 +205,7 @@ export default function CreateScreen() {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: OW.bg, paddingHorizontal: 18 },
   header: {
     flexDirection: 'row',
@@ -169,24 +229,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: OW.ink,
   },
-  inputText: { fontFamily: Font.medium, fontSize: 14, color: OW.ink },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  rowCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  people: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  contact: {
+
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  findBtn: {
+    backgroundColor: OW.dark,
+    borderRadius: Radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 58,
+  },
+  findText: { fontFamily: Font.bold, fontSize: 14, color: '#fff' },
+  hint: { fontFamily: Font.regular, fontSize: 12, color: OW.muted, marginTop: 6 },
+  notFound: { fontFamily: Font.medium, fontSize: 12.5, color: '#c0504d', marginTop: 6 },
+
+  found: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-    backgroundColor: OW.cardSoft,
+    gap: 10,
+    backgroundColor: OW.pinkSoft,
     borderWidth: 1,
-    borderColor: OW.line,
+    borderColor: OW.pink,
+    borderRadius: Radius.md,
+    padding: 10,
   },
-  contactOn: { backgroundColor: OW.pinkSoft, borderColor: OW.pink },
-  contactName: { fontFamily: Font.semibold, fontSize: 13, color: OW.ink2 },
-  contactNameOn: { color: OW.ink },
+  foundAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: OW.pink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  foundInitial: { fontFamily: Font.bold, fontSize: 15, color: '#fff' },
+  foundName: { fontFamily: Font.bold, fontSize: 14, color: OW.ink },
+  foundHandle: { fontFamily: Font.regular, fontSize: 12, color: OW.muted, marginTop: 1 },
 
   msgGrid: { flexDirection: 'row', gap: 8 },
   msgBtn: { flex: 1, borderRadius: 13, paddingVertical: 11, alignItems: 'center', gap: 5 },
@@ -212,5 +290,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
+  createBtnBusy: { opacity: 0.7 },
   createText: { fontFamily: Font.bold, fontSize: 15, color: '#fff' },
 });

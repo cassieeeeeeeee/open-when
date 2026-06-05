@@ -16,7 +16,7 @@ import {
 import { ContentItemRow } from '@/components/openwhen/ui';
 import { Font, OW, Radius, type Tone, TONES } from '@/constants/openwhen';
 import { type CapsuleContent } from '@/data/sample';
-import { deleteCapsule, useCapsule } from '@/lib/capsules';
+import { deleteCapsule, updateCapsule, useCapsule } from '@/lib/capsules';
 
 // Manage a capsule YOU created: see/add contents, edit the opening method, reseal, delete.
 const ADD = [
@@ -44,6 +44,11 @@ export default function EditCapsuleScreen() {
   const contents: CapsuleContent[] = capsule?.contents ?? [];
 
   const [method, setMethod] = useState<Method>('timed');
+
+  const removeItem = async (index: number) => {
+    if (!id) return;
+    await updateCapsule(id, { contents: contents.filter((_, i) => i !== index) });
+  };
 
   const confirmDelete = () => {
     Alert.alert('Delete capsule?', 'This can’t be undone.', [
@@ -102,7 +107,12 @@ export default function EditCapsuleScreen() {
         <Text style={styles.label}>Inside this capsule</Text>
         {contents.length > 0 ? (
           contents.map((c, i) => (
-            <ContentItemRow key={i} item={c} tone={capsule?.tone ?? 'pink'} />
+            <ContentItemRow
+              key={i}
+              item={c}
+              tone={capsule?.tone ?? 'pink'}
+              onDelete={!opened ? () => removeItem(i) : undefined}
+            />
           ))
         ) : (
           <Text style={styles.empty}>Nothing added yet.</Text>

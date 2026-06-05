@@ -1,10 +1,12 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -15,6 +17,9 @@ import { auth, db } from './firebase';
 import { firebaseEnabled } from './firebaseConfig';
 
 const COLLECTION = 'memories';
+
+// Sample ids ('m1'…) are demo data, not Firestore docs — skip writes for them.
+const isSampleMemory = (id: string) => !!findMemory(id);
 
 /** Live list of the signed-in user's memories (falls back to sample when offline). */
 export function useMyMemories(): { memories: Memory[]; loading: boolean } {
@@ -100,4 +105,14 @@ export async function createMemory(input: NewMemory): Promise<string | null> {
     createdAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function updateMemory(id: string, patch: Partial<Memory>): Promise<void> {
+  if (!db || !auth?.currentUser || isSampleMemory(id)) return;
+  await updateDoc(doc(db, COLLECTION, id), patch);
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  if (!db || !auth?.currentUser || isSampleMemory(id)) return;
+  await deleteDoc(doc(db, COLLECTION, id));
 }

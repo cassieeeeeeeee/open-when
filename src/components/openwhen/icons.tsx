@@ -57,6 +57,27 @@ export function PlusIcon({ size = 22, color = OW.ink, strokeWidth = 2.4 }: IconP
   );
 }
 
+/** Open eye — "tap to reveal" the password. */
+export function EyeIcon({ size = 22, color = OW.ink, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke={color} strokeWidth={strokeWidth} {...round} />
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={strokeWidth} />
+    </Svg>
+  );
+}
+
+/** Eye with a slash — "tap to hide" the (currently visible) password. */
+export function EyeOffIcon({ size = 22, color = OW.ink, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke={color} strokeWidth={strokeWidth} {...round} />
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M4 4l16 16" stroke={color} strokeWidth={strokeWidth} {...round} />
+    </Svg>
+  );
+}
+
 export function PencilIcon({ size = 22, color = OW.ink, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

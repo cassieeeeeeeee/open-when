@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PasswordField } from '@/components/openwhen/PasswordField';
 import { Logo } from '@/components/openwhen/ui';
 import { Font, OW, Radius } from '@/constants/openwhen';
 import { useAuth } from '@/lib/auth';
@@ -17,7 +18,7 @@ import { useAuth } from '@/lib/auth';
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export default function LoginScreen() {
     setError(null);
     setBusy(true);
     try {
-      await signIn(email, password);
+      await signIn(identifier, password);
       // The auth gate redirects to Home once signed in.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not sign in.');
@@ -42,27 +43,19 @@ export default function LoginScreen() {
       </View>
       <Text style={styles.tagline}>Welcome back.</Text>
 
-      <Text style={styles.label}>Email</Text>
+      <Text style={styles.label}>Email or username</Text>
       <TextInput
         style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@example.com"
+        value={identifier}
+        onChangeText={setIdentifier}
+        placeholder="you@example.com or username"
         placeholderTextColor={OW.muted}
         autoCapitalize="none"
         autoCorrect={false}
-        keyboardType="email-address"
       />
 
       <Text style={styles.label}>Password</Text>
-      <TextInput
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="••••••••"
-        placeholderTextColor={OW.muted}
-        secureTextEntry
-      />
+      <PasswordField value={password} onChangeText={setPassword} placeholder="••••••••" />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 

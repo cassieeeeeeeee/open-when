@@ -15,6 +15,9 @@ export type Capsule = {
   tone: Tone;
   locked?: boolean; // show a padlock (no fixed date, or an inactivity trigger)
   personId?: string; // links to a Person (for the "between us" person profile)
+  recipientId?: string; // uid of the real recipient account (when sent to an account)
+  recipientUsername?: string; // recipient's @handle captured at send time
+  recipientEmail?: string; // recipient's email captured at send time
   direction: 'created' | 'received'; // made by the user vs sent to them
   status: 'sealed' | 'unlocked'; // not yet opened vs opened
   contents?: CapsuleContent[]; // what's been added inside

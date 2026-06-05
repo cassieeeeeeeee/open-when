@@ -6,8 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlusIcon } from '@/components/openwhen/icons';
 import { EnvelopeCard, Pill, SearchBar, SectionLabel } from '@/components/openwhen/ui';
 import { Font, OW } from '@/constants/openwhen';
-import { type Capsule, capsules as sampleCapsules } from '@/data/sample';
-import { useMyCapsules } from '@/lib/capsules';
+import { type Capsule } from '@/data/sample';
+import { useMyCapsules, useReceivedCapsules } from '@/lib/capsules';
 import { SORT_OPTIONS, type SortMode, sortByMode } from '@/lib/sort';
 
 export default function CapsulesScreen() {
@@ -17,15 +17,15 @@ export default function CapsulesScreen() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortMode>('newest');
   const { capsules: myCreated } = useMyCapsules();
+  const { capsules: myReceived } = useReceivedCapsules();
 
   const inBox = useMemo(() => {
-    const base =
-      box === 'created' ? myCreated : sampleCapsules.filter((c) => c.direction === 'received');
+    const base = box === 'created' ? myCreated : myReceived;
     const q = query.trim().toLowerCase();
     return base.filter(
       (c) => !q || c.title.toLowerCase().includes(q) || c.who.toLowerCase().includes(q)
     );
-  }, [box, query, myCreated]);
+  }, [box, query, myCreated, myReceived]);
 
   const sealed = useMemo(
     () => sortByMode(inBox.filter((c) => c.status === 'sealed'), sort),

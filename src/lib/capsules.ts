@@ -22,6 +22,7 @@ const COLLECTION = 'capsules';
 // Sample ids ('c1', 'r1', …) are demo data, not Firestore docs — skip writes for them.
 const isSample = (id: string) => !!findCapsule(id);
 const sampleCreated = () => sampleCapsules.filter((c) => c.direction === 'created');
+const sampleReceived = () => sampleCapsules.filter((c) => c.direction === 'received');
 
 /** Live list of the signed-in user's CREATED capsules (falls back to sample when offline). */
 export function useMyCapsules(): { capsules: Capsule[]; loading: boolean } {
@@ -41,6 +42,40 @@ export function useMyCapsules(): { capsules: Capsule[]; loading: boolean } {
       q,
       (snap) => {
         setItems(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Capsule, 'id'>) })));
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+  }, [user]);
+
+  return { capsules: items, loading };
+}
+
+/** Live list of capsules sent TO the signed-in user (falls back to sample when offline). */
+export function useReceivedCapsules(): { capsules: Capsule[]; loading: boolean } {
+  const { user } = useAuth();
+  const [items, setItems] = useState<Capsule[]>(firebaseEnabled ? [] : sampleReceived());
+  const [loading, setLoading] = useState(firebaseEnabled);
+
+  useEffect(() => {
+    if (!db || !user) {
+      setItems(firebaseEnabled ? [] : sampleReceived());
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const q = query(collection(db, COLLECTION), where('recipientId', '==', user.uid));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setItems(
+          snap.docs.map((d) => {
+            const data = d.data() as Omit<Capsule, 'id'>;
+            // From the recipient's side this capsule is "received", and the person
+            // to show is the sender (fromName), not the stored recipient name.
+            return { ...data, id: d.id, direction: 'received' as const, who: data.fromName || data.who };
+          })
+        );
         setLoading(false);
       },
       () => setLoading(false)
@@ -103,6 +138,7 @@ export async function createCapsule(input: NewCapsule): Promise<string | null> {
   const ref = await addDoc(collection(db, COLLECTION), {
     ...clean,
     ownerId: auth.currentUser.uid,
+    fromName: auth.currentUser.displayName || auth.currentUser.email || 'Someone',
     direction: 'created',
     status: 'sealed',
     createdAt: serverTimestamp(),

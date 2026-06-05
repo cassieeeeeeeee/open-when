@@ -18,6 +18,7 @@ export type Capsule = {
   recipientId?: string; // uid of the real recipient account (when sent to an account)
   recipientUsername?: string; // recipient's @handle captured at send time
   recipientEmail?: string; // recipient's email captured at send time
+  fromName?: string; // sender's display name (shown as "From" on received capsules)
   direction: 'created' | 'received'; // made by the user vs sent to them
   status: 'sealed' | 'unlocked'; // not yet opened vs opened
   contents?: CapsuleContent[]; // what's been added inside

@@ -3,6 +3,7 @@
  * shared across screens (EnvelopeCard appears on both Home and the Capsules list, etc.).
  */
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { ComponentType, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -251,11 +252,36 @@ const CONTENT_ICON: Record<CapsuleContent['type'], ComponentType<IconProps>> = {
   playlist: MusicIcon,
 };
 
-/** A capsule/memory content item that expands to a small preview when tapped. */
-export function ContentItemRow({ item, tone = 'sage' }: { item: CapsuleContent; tone?: Tone }) {
+/** A capsule/memory content item that expands to a small preview when tapped.
+ *  Tapping the open preview opens the full media view; pass onDelete to show a remove button. */
+export function ContentItemRow({
+  item,
+  tone = 'sage',
+  onDelete,
+}: {
+  item: CapsuleContent;
+  tone?: Tone;
+  onDelete?: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const Icon = CONTENT_ICON[item.type];
   const t = TONES[tone];
+
+  const openFull = () =>
+    router.push({
+      pathname: '/media/[type]',
+      params: { type: item.type, title: item.label, preview: item.preview ?? '' },
+    });
+
+  const viewAllLabel =
+    item.type === 'photo'
+      ? 'See all photos'
+      : item.type === 'video'
+        ? 'See all videos'
+        : item.type === 'playlist'
+          ? 'See full playlist'
+          : 'Open note';
 
   return (
     <View style={styles.ciWrap}>
@@ -264,13 +290,18 @@ export function ContentItemRow({ item, tone = 'sage' }: { item: CapsuleContent; 
           <Icon size={16} color={OW.ink2} />
         </View>
         <Text style={styles.ciText}>{item.label}</Text>
+        {onDelete ? (
+          <Pressable onPress={onDelete} hitSlop={8} accessibilityLabel="Remove item" style={styles.ciDelete}>
+            <CloseIcon size={15} color={OW.muted} />
+          </Pressable>
+        ) : null}
         <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
           <ChevronDownIcon size={16} color={OW.muted} />
         </View>
       </Pressable>
 
       {open ? (
-        <View style={styles.ciPreview}>
+        <Pressable style={styles.ciPreview} onPress={openFull}>
           {item.type === 'photo' ? (
             <View style={styles.ciPhotos}>
               {[0, 1, 2, 3].map((i) => (
@@ -287,13 +318,22 @@ export function ContentItemRow({ item, tone = 'sage' }: { item: CapsuleContent; 
                 <PlayIcon size={16} color={OW.dark} />
               </View>
             </LinearGradient>
+          ) : item.type === 'playlist' ? (
+            <View>
+              <View style={styles.ciCovers}>
+                {[0, 1, 2, 3].map((i) => (
+                  <GradientThumb key={i} width={48} height={48} radius={8} from={t.color} to={t.soft} />
+                ))}
+              </View>
+              <Text style={styles.ciPreviewText}>{item.preview ?? 'A few songs saved here.'}</Text>
+            </View>
           ) : (
-            <Text style={styles.ciPreviewText}>
-              {item.preview ??
-                (item.type === 'playlist' ? 'A few songs saved here.' : 'A note saved inside.')}
-            </Text>
+            <Text style={styles.ciPreviewText}>{item.preview ?? 'A note saved inside.'}</Text>
           )}
-        </View>
+          <View style={styles.ciViewAll}>
+            <Text style={styles.ciViewAllText}>{viewAllLabel} →</Text>
+          </View>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -447,4 +487,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ciDelete: { padding: 4 },
+  ciCovers: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  ciViewAll: { marginTop: 10, alignItems: 'flex-end' },
+  ciViewAllText: { fontFamily: Font.semibold, fontSize: 12.5, color: OW.dark },
 });

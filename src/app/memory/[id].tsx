@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -11,12 +11,13 @@ import {
   MusicIcon,
   PencilIcon,
   PlusIcon,
+  TrashIcon,
   VideoIcon,
 } from '@/components/openwhen/icons';
 import { ContentItemRow } from '@/components/openwhen/ui';
 import { Font, OW, type Tone, TONES } from '@/constants/openwhen';
 import { findPerson, type Person } from '@/data/sample';
-import { useMemory } from '@/lib/memories';
+import { deleteMemory, updateMemory, useMemory } from '@/lib/memories';
 
 const ADD = [
   { key: 'text', label: 'Text', tone: 'lilac' as Tone, Icon: PencilIcon },
@@ -36,6 +37,25 @@ export default function MemoryDetailScreen() {
     .map((pid) => findPerson(pid))
     .filter((p): p is Person => !!p);
 
+  const removeItem = async (index: number) => {
+    if (!id) return;
+    await updateMemory(id, { contents: contents.filter((_, i) => i !== index) });
+  };
+
+  const confirmDelete = () => {
+    Alert.alert('Delete this memory?', 'This can’t be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          if (id) await deleteMemory(id);
+          router.back();
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
@@ -47,9 +67,18 @@ export default function MemoryDetailScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.cover, { paddingTop: insets.top + 6 }]}>
-          <Pressable onPress={() => router.back()} hitSlop={8} style={styles.back}>
-            <ChevronLeftIcon size={22} color="#fff" />
-          </Pressable>
+          <View style={styles.coverTop}>
+            <Pressable onPress={() => router.back()} hitSlop={8} style={styles.back}>
+              <ChevronLeftIcon size={22} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={confirmDelete}
+              hitSlop={8}
+              style={styles.back}
+              accessibilityLabel="Delete memory">
+              <TrashIcon size={20} color="#fff" />
+            </Pressable>
+          </View>
           <View>
             <Text style={styles.coverTitle} numberOfLines={2}>
               {memory?.title ?? 'Memory'}
@@ -81,7 +110,7 @@ export default function MemoryDetailScreen() {
 
           <Text style={styles.label}>What&apos;s inside</Text>
           {contents.length > 0 ? (
-            contents.map((c, i) => <ContentItemRow key={i} item={c} />)
+            contents.map((c, i) => <ContentItemRow key={i} item={c} onDelete={() => removeItem(i)} />)
           ) : (
             <Text style={styles.empty}>Nothing added yet.</Text>
           )}
@@ -111,6 +140,7 @@ const styles = StyleSheet.create({
     minHeight: 190,
     justifyContent: 'space-between',
   },
+  coverTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   back: { width: 36, height: 36, justifyContent: 'center' },
   coverTitle: { fontFamily: Font.script, fontSize: 30, color: '#fff' },
   coverDate: { fontFamily: Font.regular, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginTop: 2 },
@@ -132,27 +162,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  contentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: OW.cardSoft,
-    borderWidth: 1,
-    borderColor: OW.line,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-  },
-  contentIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: OW.card,
-    borderWidth: 1,
-    borderColor: OW.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   contentText: { fontFamily: Font.semibold, fontSize: 14, color: OW.ink },
   empty: { fontFamily: Font.regular, fontSize: 13, color: OW.muted },
 

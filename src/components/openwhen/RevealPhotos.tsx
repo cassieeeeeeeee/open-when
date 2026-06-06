@@ -244,7 +244,7 @@ const co = StyleSheet.create({
   big: { flex: 1.6, borderRadius: 8, overflow: 'hidden' },
   rightCol: { flex: 1, gap: 6 },
   cell: { flex: 1, borderRadius: 8, overflow: 'hidden' },
-  fill: { flex: 1 },
+  fill: { flex: 1, width: '100%' },
   botRow: { flexDirection: 'row', gap: 6, height: 92 },
   wide: { flex: 1.5, borderRadius: 8, overflow: 'hidden' },
   sticker: {

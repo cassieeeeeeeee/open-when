@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef, useState } from 'react';
-import { Animated, LayoutAnimation, PanResponder, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { type ReactNode, useRef, useState } from 'react';
+import { type GestureResponderHandlers, PanResponder, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import Animated, { Easing, LinearTransition, runOnJS, type SharedValue, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Line, Rect, Svg } from 'react-native-svg';
 
 import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
@@ -18,11 +19,6 @@ const GRADS: [string, string][] = [
   ['#9b8fd0', '#6f7e62'], ['#e0b98a', '#b08a64'], ['#8aa9b0', '#6f8a7c'],
 ];
 const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRADS.length) % GRADS.length];
-
-// Enable LayoutAnimation on old-architecture Android (no-op elsewhere).
-if (Platform.OS === 'android') {
-  UIManager.setLayoutAnimationEnabledExperimental?.(true);
-}
 
 type Colors = { onBg: string; onBgDim: string; base: string };
 
@@ -69,8 +65,88 @@ function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string
   );
 }
 
-// Renders the photos in their real format layout, each one draggable in place.
-// On drop, the photo snaps to whichever slot's measured centre is nearest.
+// How the lifted photo settles, and how the displaced siblings slide. The pan-settle and the
+// LinearTransition slide MUST share one duration + easing, because for the dragged photo they
+// run at the same time on different views (outer slot slides; inner finger-offset unwinds) and
+// the visual is their sum. Linear keeps them in lockstep so that sum is a straight glide from
+// the finger into the slot — anything else (e.g. ease-out) makes the offset outrun the slide
+// and the photo bows toward its old slot mid-settle.
+const SETTLE_MS = 260;
+const SETTLE_EASING = Easing.linear;
+const LIFT_SCALE = 1.08;
+
+type Measurable = { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null;
+
+const dp = StyleSheet.create({
+  // The inner transform layer fills the slot so the photo lays out exactly as it does in the
+  // read-only reveal; only its transform changes while dragging.
+  fill: { flexGrow: 1, alignSelf: 'stretch', alignItems: 'center' },
+  // The lifted photo floats above its neighbours while it's being dragged.
+  elevated: { zIndex: 30, elevation: 16 },
+});
+
+// One photo, split across two views so the reorder slide and the finger-drag don't fight.
+//
+//  • OUTER = the slot. It owns the position and the `LinearTransition` layout slide, so when
+//    the array reorders React just moves this keyed view and reanimated glides it (and every
+//    displaced sibling) into the new slot — Fabric-native and per-item, unlike LayoutAnimation
+//    (which janks on the New Architecture).
+//  • INNER = the lift layer. It owns the shared-value pan/scale transform that tracks the
+//    finger and settles on release.
+//
+// They're separate views on purpose: a layout slide and a transform both resolve to a CSS
+// transform on web, so sharing one node makes the slide clobber the finger-settle (the lifted
+// photo snaps back to its old slot). Split across two views, the transforms compose, and the
+// lifted photo glides continuously from the finger into its new slot on every platform.
+function DraggablePhoto({
+  id,
+  dragId,
+  panX,
+  panY,
+  lift,
+  panHandlers,
+  posStyle,
+  registerRef,
+  onMeasure,
+  children,
+}: {
+  id: number;
+  dragId: number | null;
+  panX: SharedValue<number>;
+  panY: SharedValue<number>;
+  lift: SharedValue<number>;
+  panHandlers: GestureResponderHandlers;
+  posStyle: StyleProp<ViewStyle>;
+  registerRef: (el: Measurable) => void;
+  onMeasure: () => void;
+  children: ReactNode;
+}) {
+  const isDrag = dragId === id;
+  // Only the lifted photo reads the shared values; every other photo resolves to an identity
+  // transform so its motion comes purely from the outer layout transition.
+  const animStyle = useAnimatedStyle(() =>
+    isDrag
+      ? {
+          transform: [{ translateX: panX.value }, { translateY: panY.value }, { scale: 1 + lift.value * (LIFT_SCALE - 1) }],
+          opacity: 0.97,
+        }
+      : { transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }], opacity: 1 },
+  );
+  return (
+    <Animated.View
+      accessibilityLabel={`drag-photo-${id}`}
+      ref={(el) => registerRef(el as never)}
+      onLayout={onMeasure}
+      layout={LinearTransition.duration(SETTLE_MS).easing(SETTLE_EASING)}
+      {...panHandlers}
+      style={[posStyle, isDrag ? dp.elevated : null]}>
+      <Animated.View style={[dp.fill, animStyle]}>{children}</Animated.View>
+    </Animated.View>
+  );
+}
+
+// Renders the photos in their real format layout, each one draggable in place. On drop,
+// the photo swaps with whichever slot's measured centre is nearest.
 function DraggablePhotos({
   ids,
   format,
@@ -83,10 +159,11 @@ function DraggablePhotos({
   onDragActive?: (active: boolean) => void;
 }) {
   const [dragId, setDragId] = useState<number | null>(null);
-  const pan = useRef(new Animated.ValueXY()).current;
-  const lift = useRef(new Animated.Value(0)).current;
+  const panX = useSharedValue(0);
+  const panY = useSharedValue(0);
+  const lift = useSharedValue(0);
   const positions = useRef<Record<number, { cx: number; cy: number }>>({});
-  const refs = useRef<Record<number, { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null>>({});
+  const refs = useRef<Record<number, Measurable>>({});
   const armed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,16 +181,21 @@ function DraggablePhotos({
     }
   };
 
-  // Glide the lifted photo back down into its (possibly new) slot; siblings slide
-  // into place via the LayoutAnimation queued just before the reorder.
+  const endDrag = () => {
+    armed.current = false;
+    setDragId(null);
+    onDragActive?.(false);
+  };
+
+  // Glide the lifted photo from the finger-release point down into its (possibly new) slot.
+  // pan→0 runs on the SAME duration + easing as the siblings' LinearTransition slide, so the
+  // photo's finger offset unwinds exactly as its slot box moves under it — one continuous
+  // path, no snap. runOnJS hops back to JS to clear the drag state once it lands.
   const settle = () => {
-    Animated.parallel([
-      Animated.timing(pan, { toValue: { x: 0, y: 0 }, duration: 260, useNativeDriver: false }),
-      Animated.timing(lift, { toValue: 0, duration: 260, useNativeDriver: false }),
-    ]).start(() => {
-      armed.current = false;
-      setDragId(null);
-      onDragActive?.(false);
+    panX.value = withTiming(0, { duration: SETTLE_MS, easing: SETTLE_EASING });
+    panY.value = withTiming(0, { duration: SETTLE_MS, easing: SETTLE_EASING });
+    lift.value = withTiming(0, { duration: SETTLE_MS, easing: SETTLE_EASING }, (finished) => {
+      if (finished) runOnJS(endDrag)();
     });
   };
 
@@ -125,7 +207,8 @@ function DraggablePhotos({
       onPanResponderTerminationRequest: () => !armed.current,
       onPanResponderGrant: () => {
         armed.current = false;
-        pan.setValue({ x: 0, y: 0 });
+        panX.value = 0;
+        panY.value = 0;
         // Re-measure every photo's CURRENT on-screen position now (handles page
         // scroll / a just-finished swap animation that left old measurements stale).
         ids.forEach((tid) => measure(tid));
@@ -134,7 +217,7 @@ function DraggablePhotos({
           armed.current = true;
           setDragId(id);
           onDragActive?.(true); // freeze the page scroll while dragging
-          Animated.spring(lift, { toValue: 1, useNativeDriver: false, speed: 20, bounciness: 8 }).start();
+          lift.value = withSpring(1, { mass: 0.5, damping: 12, stiffness: 200 });
         }, 250);
       },
       onPanResponderMove: (_, g) => {
@@ -143,7 +226,8 @@ function DraggablePhotos({
           if (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8) clearTimer();
           return;
         }
-        pan.setValue({ x: g.dx, y: g.dy });
+        panX.value = g.dx;
+        panY.value = g.dy;
       },
       onPanResponderRelease: (_, g) => {
         clearTimer();
@@ -164,9 +248,8 @@ function DraggablePhotos({
             }
           });
           if (bestId !== id) {
-            // swap the dragged photo with the one it was dropped on: each takes the
-            // other's slot (so both slide past each other), nothing else shifts.
-            LayoutAnimation.configureNext({ duration: 260, update: { type: LayoutAnimation.Types.easeInEaseOut } });
+            // swap the dragged photo with the one it was dropped on: each takes the other's
+            // slot (so both slide past each other via LinearTransition), nothing else shifts.
             const from = ids.indexOf(id);
             const to = ids.indexOf(bestId);
             const next = [...ids];
@@ -181,20 +264,22 @@ function DraggablePhotos({
         if (armed.current) settle();
       },
     });
-    const isDrag = dragId === id;
-    const scale = lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
     return (
-      <Animated.View
+      <DraggablePhoto
         key={id}
-        accessibilityLabel={`drag-photo-${id}`}
-        ref={(el) => {
-          refs.current[id] = el as never;
+        id={id}
+        dragId={dragId}
+        panX={panX}
+        panY={panY}
+        lift={lift}
+        panHandlers={responder.panHandlers}
+        posStyle={style}
+        registerRef={(el) => {
+          refs.current[id] = el;
         }}
-        onLayout={() => measure(id)}
-        {...responder.panHandlers}
-        style={[style, isDrag ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }], zIndex: 30, elevation: 16, opacity: 0.97 } : null]}>
+        onMeasure={() => measure(id)}>
         {content}
-      </Animated.View>
+      </DraggablePhoto>
     );
   };
 

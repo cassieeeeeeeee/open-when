@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -26,6 +25,7 @@ import {
   SharePlaneIcon,
   TrashIcon,
 } from '@/components/openwhen/icons';
+import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
@@ -184,13 +184,14 @@ export default function CapsuleScreen() {
     }
     if (editing) {
       return (
-        <TextInput
-          style={styles.letterEdit}
-          value={item.preview ?? item.label}
-          onChangeText={(t) => updateItem(index, { preview: t })}
-          multiline
-          placeholder="Write your note…"
-          placeholderTextColor="#9a9186"
+        <NoteEditor
+          initial={item.preview ?? item.label}
+          colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
+          onSave={(t) => {
+            updateItem(index, { preview: t });
+            setEditingIndex(null);
+          }}
+          onCancel={() => setEditingIndex(null)}
         />
       );
     }
@@ -430,18 +431,6 @@ const styles = StyleSheet.create({
   itemBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: -6 },
   itemBarRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
-  letterEdit: {
-    backgroundColor: '#f7f2e8',
-    borderRadius: 16,
-    padding: 18,
-    marginTop: 12,
-    fontFamily: Font.regular,
-    fontSize: 14,
-    color: '#3a3630',
-    lineHeight: 22,
-    minHeight: 90,
-    textAlignVertical: 'top',
-  },
   emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
   addWrap: { marginTop: 24 },
   addLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },

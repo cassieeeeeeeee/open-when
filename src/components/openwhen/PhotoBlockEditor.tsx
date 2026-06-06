@@ -7,7 +7,7 @@ import { Line, Rect, Svg } from 'react-native-svg';
 import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { Font } from '@/constants/openwhen';
 
-const FORMATS: { id: PhotoVariant; label: string }[] = [
+export const FORMATS: { id: PhotoVariant; label: string }[] = [
   { id: 'polaroid', label: 'Polaroids' },
   { id: 'clothesline', label: 'Clothesline' },
   { id: 'filmstrip', label: 'Filmstrip' },
@@ -24,7 +24,7 @@ const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRAD
 type Colors = { onBg: string; onBgDim: string; base: string };
 
 // Tiny glyph that previews each layout next to its chip label.
-function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string; size?: number }) {
+export function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string; size?: number }) {
   const sw = 1.6;
   if (id === 'polaroid') {
     return (
@@ -310,12 +310,11 @@ export function PhotoBlockEditor({
   images: number[];
   format: PhotoVariant;
   colors: Colors;
-  onSave: (patch: { format: string; count: number; images: number[] }) => void;
+  onSave: (patch: { count: number; images: number[] }) => void;
   onCancel: () => void;
   onDragActive?: (active: boolean) => void;
 }) {
   const [draftImages, setDraftImages] = useState<number[]>(images);
-  const [draftFormat, setDraftFormat] = useState<PhotoVariant>(format);
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const selectedCount = Object.values(sel).filter(Boolean).length;
@@ -360,22 +359,7 @@ export function PhotoBlockEditor({
   return (
     <View>
       {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Press and hold a photo, then drag to rearrange</Text> : null}
-      <DraggablePhotos ids={draftImages} format={draftFormat} onReorder={setDraftImages} onDragActive={onDragActive} />
-      <View style={s.fmtRow}>
-        {FORMATS.map((f) => {
-          const on = draftFormat === f.id;
-          const fg = on ? colors.base : colors.onBg;
-          return (
-            <Pressable
-              key={f.id}
-              onPress={() => setDraftFormat(f.id)}
-              style={[s.fmtChip, on ? { backgroundColor: colors.onBg } : { borderColor: colors.onBgDim, borderWidth: 1 }]}>
-              <FormatGlyph id={f.id} color={fg} />
-              <Text style={[s.fmtText, { color: fg }]}>{f.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} />
       <View style={s.actionsRow}>
         <Pressable onPress={addImage} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
           <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
@@ -389,7 +373,7 @@ export function PhotoBlockEditor({
           <Text style={[s.cancelText, { color: colors.onBgDim }]}>Cancel</Text>
         </Pressable>
         <Pressable
-          onPress={() => onSave({ images: draftImages, format: draftFormat, count: draftImages.length })}
+          onPress={() => onSave({ images: draftImages, count: draftImages.length })}
           style={[s.saveBtn, { backgroundColor: colors.onBg }]}
           hitSlop={6}>
           <Text style={[s.saveText, { color: colors.base }]}>Save</Text>

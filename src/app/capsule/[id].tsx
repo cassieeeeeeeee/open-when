@@ -12,14 +12,12 @@ import {
   View,
 } from 'react-native';
 import Animated, {
-  Easing,
   Extrapolation,
   interpolate,
   type SharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,7 +35,7 @@ import {
   TrashIcon,
 } from '@/components/openwhen/icons';
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
-import { PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
+import { FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
@@ -113,15 +111,17 @@ function BandLayer({
   );
 }
 
-// Per-section appearance controls, shown while a block is being edited: a Theme button that opens
-// the swatch grid (choosing one themes this block and every block below it, until another override)
-// and a Background-photo button. Both write straight to the content item via the callbacks.
+// Per-section appearance controls, shown while a block is being edited: a Theme button (which opens
+// the swatch grid — choosing one themes this block and every block below it, until another override),
+// a Layout button for photo blocks (a menu of photo layouts), and a Background-photo button. Each
+// writes straight to the content item via the callbacks.
 function SectionAppearance({
   item,
   sec,
   inheritedName,
   onSetTheme,
   onClearTheme,
+  onSetLayout,
   onPickPhoto,
   onRemovePhoto,
 }: {
@@ -130,17 +130,26 @@ function SectionAppearance({
   inheritedName: string;
   onSetTheme: (id: string) => void;
   onClearTheme: () => void;
+  onSetLayout: (format: PhotoVariant) => void;
   onPickPhoto: () => void;
   onRemovePhoto: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<'none' | 'theme' | 'layout'>('none');
+  const toggle = (m: 'theme' | 'layout') => setOpen((v) => (v === m ? 'none' : m));
+  const fmt = (item.format ?? 'polaroid') as PhotoVariant;
   return (
     <View style={styles.sectionAppear}>
       <View style={styles.sectionAppearRow}>
-        <Pressable onPress={() => setOpen((v) => !v)} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section theme">
+        <Pressable onPress={() => toggle('theme')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section theme">
           <LinearGradient colors={sec.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} />
           <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Theme</Text>
         </Pressable>
+        {item.type === 'photo' ? (
+          <Pressable onPress={() => toggle('layout')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section layout">
+            <FormatGlyph id={fmt} color={sec.onBg} size={14} />
+            <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Layout</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={item.backgroundImage ? onRemovePhoto : onPickPhoto}
           style={[styles.bgBtn, { borderColor: sec.onBgDim }]}
@@ -149,23 +158,11 @@ function SectionAppearance({
           <Text style={[styles.bgBtnText, { color: sec.onBg }]}>{item.backgroundImage ? 'Remove photo' : 'Background photo'}</Text>
         </Pressable>
       </View>
-      {open ? (
+      {open === 'theme' ? (
         <View style={styles.sectionThemeGrid}>
-          <ThemeSwatchGrid
-            selectedId={item.theme}
-            textColor={sec.onBg}
-            onSelect={(themeId) => {
-              onSetTheme(themeId);
-              setOpen(false);
-            }}
-          />
+          <ThemeSwatchGrid selectedId={item.theme} textColor={sec.onBg} onSelect={(themeId) => { onSetTheme(themeId); setOpen('none'); }} />
           {item.theme ? (
-            <Pressable
-              onPress={() => {
-                onClearTheme();
-                setOpen(false);
-              }}
-              hitSlop={6}>
+            <Pressable onPress={() => { onClearTheme(); setOpen('none'); }} hitSlop={6}>
               <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Use inherited theme ({inheritedName})</Text>
             </Pressable>
           ) : (
@@ -173,6 +170,23 @@ function SectionAppearance({
               Inheriting “{inheritedName}”. Pick one to theme this section and the ones below it.
             </Text>
           )}
+        </View>
+      ) : null}
+      {open === 'layout' ? (
+        <View style={styles.sectionLayoutMenu}>
+          {FORMATS.map((f) => {
+            const on = fmt === f.id;
+            const fg = on ? sec.colors[0] : sec.onBg;
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => { onSetLayout(f.id); setOpen('none'); }}
+                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }]}>
+                <FormatGlyph id={f.id} color={fg} />
+                <Text style={[styles.layoutChipText, { color: fg }]}>{f.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
     </View>
@@ -189,28 +203,20 @@ export default function CapsuleScreen() {
   const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
   const isPreview = preview === '1';
 
-  const [themeOverride, setThemeOverride] = useState<string | undefined>(undefined);
-  const [bgOverride, setBgOverride] = useState<string | null | undefined>(undefined);
   const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
   const [photoPicker, setPhotoPicker] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [scrollLocked, setScrollLocked] = useState(false);
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
-  const [themePanelH, setThemePanelH] = useState(0);
   const [blockTops, setBlockTops] = useState<number[]>([]);
-  const themeMenu = useSharedValue(0);
-  const themePanelStyle = useAnimatedStyle(() => ({ height: themeMenu.value * themePanelH, opacity: themeMenu.value }));
-  const themeChevronStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 - themeMenu.value * 180}deg` }] }));
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
   });
 
-  // A custom background photo (bgOverride: undefined = use the stored one, null = explicitly
-  // cleared, string = a picked photo) wins over the theme gradient. When one is set we force
-  // light text + a dark scrim so the writing stays legible over any photo.
-  const bgImage = bgOverride !== undefined ? bgOverride : capsule?.backgroundImage ?? null;
-  const baseThemeId = themeOverride ?? capsule?.theme ?? 'twilight';
+  // A whole-capsule background photo (stored on the capsule) still wins over the theme gradient,
+  // forcing light text + a dark scrim; otherwise the per-section bands paint the background.
+  const bgImage = capsule?.backgroundImage ?? null;
+  const baseThemeId = capsule?.theme ?? 'twilight';
   const baseTheme = getCapsuleTheme(baseThemeId);
   const theme = bgImage ? { ...baseTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const } : baseTheme;
   const contents = contentsDraft ?? capsule?.contents ?? [];
@@ -241,31 +247,6 @@ export default function CapsuleScreen() {
   }, [contents, sectionThemeIds, blockTops, baseThemeId]);
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
-  const pickTheme = (t: string) => {
-    setThemeOverride(t);
-    if (id) updateCapsule(id, { theme: t });
-  };
-  // The theme picker lives in a pull-up tab: tap to open, and it drops back down once a
-  // swatch is chosen so it never sits in front of the reveal.
-  const setThemeMenu = (open: boolean) => {
-    setThemeMenuOpen(open);
-    themeMenu.value = withTiming(open ? 1 : 0, { duration: 240, easing: Easing.out(Easing.cubic) });
-  };
-  const setBackground = (uri: string | null) => {
-    setBgOverride(uri);
-    if (id) updateCapsule(id, { backgroundImage: uri ?? '' });
-  };
-  const pickBackground = async () => {
-    try {
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
-      if (!res.canceled && res.assets?.[0]) {
-        setBackground(res.assets[0].uri);
-        setThemeMenu(false);
-      }
-    } catch {
-      // user dismissed or no library access — leave the background unchanged
-    }
-  };
   const saveContents = (next: CapsuleContent[]) => {
     setContentsDraft(next);
     if (id) updateCapsule(id, { contents: next });
@@ -500,7 +481,7 @@ export default function CapsuleScreen() {
           styles.darkScroll,
           // Extra room at the bottom when sections are themed, so the last section can scroll up
           // far enough for its background to finish fading in.
-          { paddingBottom: insets.bottom + (isPreview ? 130 : 96) + (bands.length > 1 ? screenH * 0.4 : 0) },
+          { paddingBottom: insets.bottom + (isPreview ? 40 : 96) + (bands.length > 1 ? screenH * 0.4 : 0) },
         ]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
@@ -582,6 +563,7 @@ export default function CapsuleScreen() {
                       inheritedName={inheritedName}
                       onSetTheme={(themeId) => updateItem(i, { theme: themeId })}
                       onClearTheme={() => clearItemTheme(i)}
+                      onSetLayout={(fmt) => updateItem(i, { format: fmt })}
                       onPickPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}
                     />
@@ -630,58 +612,7 @@ export default function CapsuleScreen() {
         )}
       </Animated.ScrollView>
 
-      {isPreview ? (
-        <View
-          style={[
-            styles.themeBar,
-            {
-              paddingBottom: insets.bottom + 8,
-              // Match the bar tone to the background so the theme's onBg text always contrasts:
-              // dark themes (light text) get a dark bar; light themes (dark text) get a light bar.
-              backgroundColor: theme.statusBar === 'dark' ? 'rgba(255,255,255,0.82)' : 'rgba(8,10,22,0.82)',
-            },
-          ]}>
-          <Animated.View style={[styles.themePanelClip, themePanelStyle]}>
-            <View style={styles.themePanelInner} onLayout={(e) => setThemePanelH(e.nativeEvent.layout.height)}>
-              <ThemeSwatchGrid
-                selectedId={baseThemeId}
-                textColor={theme.onBg}
-                onSelect={(themeId) => {
-                  pickTheme(themeId);
-                  if (bgImage) setBackground(null);
-                  setThemeMenu(false);
-                }}
-              />
-              <View style={styles.bgRow}>
-                <Pressable onPress={pickBackground} style={[styles.bgBtn, { borderColor: theme.onBgDim }]} accessibilityLabel="Upload background photo">
-                  <ImageIcon size={15} color={theme.onBg} />
-                  <Text style={[styles.bgBtnText, { color: theme.onBg }]}>{bgImage ? 'Change photo' : 'Use your own photo'}</Text>
-                </Pressable>
-                {bgImage ? (
-                  <Pressable onPress={() => setBackground(null)} hitSlop={6}>
-                    <Text style={[styles.bgRemove, { color: theme.onBgDim }]}>Remove</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          </Animated.View>
-          <Pressable onPress={() => setThemeMenu(!themeMenuOpen)} style={styles.themeTab} hitSlop={6} accessibilityLabel="Toggle theme menu">
-            <View style={[styles.themeGrabber, { backgroundColor: theme.onBgDim }]} />
-            <View style={styles.themeTabRow}>
-              <Text style={[styles.themeTabText, { color: theme.onBg }]}>Theme</Text>
-              <LinearGradient
-                colors={theme.colors}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.themeTabSwatch, { borderColor: theme.onBg }]}
-              />
-              <Animated.View style={themeChevronStyle}>
-                <ChevronDownIcon size={15} color={theme.onBg} />
-              </Animated.View>
-            </View>
-          </Pressable>
-        </View>
-      ) : (
+      {isPreview ? null : (
         <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
           <Pressable style={styles.action}>
             <SaveIcon size={20} color={theme.onBg} />
@@ -786,6 +717,9 @@ const styles = StyleSheet.create({
   itemThemeChip: { width: 16, height: 16, borderRadius: 5, borderWidth: 1.5 },
   sectionThemeGrid: { marginTop: 12, gap: 8 },
   sectionInheritNote: { fontFamily: Font.medium, fontSize: 11, textAlign: 'center', marginTop: 2, paddingHorizontal: 10, lineHeight: 15 },
+  sectionLayoutMenu: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 },
+  layoutChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
+  layoutChipText: { fontFamily: Font.semibold, fontSize: 12 },
   themeTab: { alignItems: 'center', paddingTop: 2 },
   themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
   themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },

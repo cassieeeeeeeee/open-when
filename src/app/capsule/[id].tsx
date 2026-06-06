@@ -168,7 +168,11 @@ export default function CapsuleScreen() {
               images={imgs}
               format={fmt}
               colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
-              onChange={(patch) => updateItem(index, patch)}
+              onSave={(patch) => {
+                updateItem(index, patch);
+                setEditingIndex(null);
+              }}
+              onCancel={() => setEditingIndex(null)}
             />
           ) : (
             <RevealPhotos images={imgs} variant={fmt} />

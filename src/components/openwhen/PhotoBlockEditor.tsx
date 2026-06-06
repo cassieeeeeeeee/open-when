@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Line, Rect, Svg } from 'react-native-svg';
 
 import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { Font } from '@/constants/openwhen';
@@ -20,9 +21,51 @@ const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRAD
 
 type Colors = { onBg: string; onBgDim: string; base: string };
 
+// Tiny glyph that previews each layout next to its chip label.
+function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string; size?: number }) {
+  const sw = 1.6;
+  if (id === 'polaroid') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Rect x={5} y={3.5} width={14} height={17} rx={1.6} stroke={color} strokeWidth={sw} fill="none" />
+        <Line x1={5} y1={15.5} x2={19} y2={15.5} stroke={color} strokeWidth={sw} />
+      </Svg>
+    );
+  }
+  if (id === 'clothesline') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Line x1={2.5} y1={6} x2={21.5} y2={6} stroke={color} strokeWidth={sw} strokeLinecap="round" />
+        <Rect x={5.5} y={7} width={5.5} height={8.5} rx={0.8} stroke={color} strokeWidth={1.5} fill="none" />
+        <Rect x={13} y={7} width={5.5} height={8.5} rx={0.8} stroke={color} strokeWidth={1.5} fill="none" />
+      </Svg>
+    );
+  }
+  if (id === 'filmstrip') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Rect x={4} y={4.5} width={16} height={15} rx={1.6} stroke={color} strokeWidth={sw} fill="none" />
+        {[6.5, 11, 15.5].map((x) => (
+          <Rect key={`t${x}`} x={x} y={6.2} width={2} height={1.6} rx={0.4} fill={color} />
+        ))}
+        {[6.5, 11, 15.5].map((x) => (
+          <Rect key={`b${x}`} x={x} y={16.2} width={2} height={1.6} rx={0.4} fill={color} />
+        ))}
+      </Svg>
+    );
+  }
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Rect x={4} y={4} width={7} height={7} rx={1} stroke={color} strokeWidth={sw} fill="none" />
+      <Rect x={13} y={4} width={7} height={7} rx={1} stroke={color} strokeWidth={sw} fill="none" />
+      <Rect x={4} y={13} width={7} height={7} rx={1} stroke={color} strokeWidth={sw} fill="none" />
+      <Rect x={13} y={13} width={7} height={7} rx={1} stroke={color} strokeWidth={sw} fill="none" />
+    </Svg>
+  );
+}
+
 // Renders the photos in their real format layout, each one draggable in place.
-// On drop, the photo snaps to whichever slot's measured centre is nearest — so it
-// works for any layout (scatter, hung line, filmstrip, mosaic) without grid math.
+// On drop, the photo snaps to whichever slot's measured centre is nearest.
 function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: PhotoVariant; onReorder: (next: number[]) => void }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const pan = useRef(new Animated.ValueXY()).current;
@@ -94,40 +137,43 @@ function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: Ph
   return <RevealPhotos images={ids} variant={format} renderItem={renderItem} />;
 }
 
-// Per-photo-item editor: drag to rearrange in-format, change format, add, select-to-remove.
+// Per-photo-item editor. Edits a local draft (format + ordered images); nothing is
+// committed until Save, so Cancel reverts cleanly.
 export function PhotoBlockEditor({
   images,
   format,
   colors,
-  onChange,
+  onSave,
+  onCancel,
 }: {
   images: number[];
   format: PhotoVariant;
   colors: Colors;
-  onChange: (patch: { format?: string; count?: number; images?: number[] }) => void;
+  onSave: (patch: { format: string; count: number; images: number[] }) => void;
+  onCancel: () => void;
 }) {
+  const [draftImages, setDraftImages] = useState<number[]>(images);
+  const [draftFormat, setDraftFormat] = useState<PhotoVariant>(format);
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const selectedCount = Object.values(sel).filter(Boolean).length;
 
   const removeSelected = () => {
     if (!selectedCount) return;
-    const next = images.filter((_, i) => !sel[i]);
-    onChange({ images: next, count: next.length });
+    setDraftImages(draftImages.filter((_, i) => !sel[i]));
     setSel({});
     setSelecting(false);
   };
   const addImage = () => {
-    const nextId = images.length ? Math.max(...images) + 1 : 0;
-    const next = [...images, nextId];
-    onChange({ images: next, count: next.length });
+    const nextId = draftImages.length ? Math.max(...draftImages) + 1 : 0;
+    setDraftImages([...draftImages, nextId]);
   };
 
   if (selecting) {
     return (
       <View>
         <View style={s.grid}>
-          {images.map((id, i) => {
+          {draftImages.map((id, i) => {
             const on = !!sel[i];
             return (
               <Pressable key={i} accessibilityLabel="photo-cell" style={s.cellWrap} onPress={() => setSel((prev) => ({ ...prev, [i]: !prev[i] }))}>
@@ -151,17 +197,19 @@ export function PhotoBlockEditor({
 
   return (
     <View>
-      {images.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag a photo to rearrange</Text> : null}
-      <DraggablePhotos ids={images} format={format} onReorder={(next) => onChange({ images: next, count: next.length })} />
+      {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag a photo to rearrange</Text> : null}
+      <DraggablePhotos ids={draftImages} format={draftFormat} onReorder={setDraftImages} />
       <View style={s.fmtRow}>
         {FORMATS.map((f) => {
-          const on = format === f.id;
+          const on = draftFormat === f.id;
+          const fg = on ? colors.base : colors.onBg;
           return (
             <Pressable
               key={f.id}
-              onPress={() => onChange({ format: f.id })}
+              onPress={() => setDraftFormat(f.id)}
               style={[s.fmtChip, on ? { backgroundColor: colors.onBg } : { borderColor: colors.onBgDim, borderWidth: 1 }]}>
-              <Text style={[s.fmtText, { color: on ? colors.base : colors.onBg }]}>{f.label}</Text>
+              <FormatGlyph id={f.id} color={fg} />
+              <Text style={[s.fmtText, { color: fg }]}>{f.label}</Text>
             </Pressable>
           );
         })}
@@ -170,8 +218,19 @@ export function PhotoBlockEditor({
         <Pressable onPress={addImage} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
           <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
         </Pressable>
-        <Pressable onPress={() => setSelecting(true)} disabled={!images.length}>
+        <Pressable onPress={() => setSelecting(true)} disabled={!draftImages.length}>
           <Text style={[s.manageText, { color: colors.onBgDim }]}>Select to remove</Text>
+        </Pressable>
+      </View>
+      <View style={s.footer}>
+        <Pressable onPress={onCancel} style={s.cancelBtn} hitSlop={6}>
+          <Text style={[s.cancelText, { color: colors.onBgDim }]}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onSave({ images: draftImages, format: draftFormat, count: draftImages.length })}
+          style={[s.saveBtn, { backgroundColor: colors.onBg }]}
+          hitSlop={6}>
+          <Text style={[s.saveText, { color: colors.base }]}>Save</Text>
         </Pressable>
       </View>
     </View>
@@ -200,15 +259,18 @@ const s = StyleSheet.create({
   checkOn: { backgroundColor: '#3f9c6d', borderColor: '#fff' },
   checkMark: { color: '#fff', fontSize: 11, fontFamily: Font.bold },
   bar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 12 },
-  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  cancelBtn: { paddingHorizontal: 16, paddingVertical: 8 },
   cancelText: { fontFamily: Font.semibold, fontSize: 13 },
   removeBtn: { backgroundColor: '#c0504d', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8 },
   removeText: { fontFamily: Font.bold, fontSize: 13, color: '#fff' },
   fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
-  fmtChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  fmtChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' },
   addImgBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
   addImgText: { fontFamily: Font.semibold, fontSize: 12 },
   manageText: { fontFamily: Font.semibold, fontSize: 12.5, textDecorationLine: 'underline' },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginTop: 16 },
+  saveBtn: { borderRadius: 16, paddingHorizontal: 20, paddingVertical: 8 },
+  saveText: { fontFamily: Font.bold, fontSize: 13 },
 });

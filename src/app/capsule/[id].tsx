@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Path } from 'react-native-svg';
 
 import {
   ChevronDownIcon,
@@ -29,27 +28,11 @@ import {
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
 import { type CapsuleContent, unlockedDetail } from '@/data/sample';
 import { updateCapsule, useCapsule } from '@/lib/capsules';
-
-const STARS: [number, number][] = [
-  [20, 40], [70, 28], [120, 60], [170, 30], [220, 54],
-  [265, 36], [40, 100], [150, 90], [250, 104], [95, 130],
-];
-// Scattered [cx, cy, radius] flecks for the snow (winter / Christmas) and petal
-// (spring / floral / wedding) backgrounds.
-const SNOW: [number, number, number][] = [
-  [25, 30, 2.6], [62, 58, 1.6], [100, 26, 2], [140, 70, 2.8], [180, 34, 1.6],
-  [220, 62, 2.4], [262, 30, 2], [40, 110, 1.8], [92, 128, 2.6], [150, 108, 1.6],
-  [210, 124, 2.2], [268, 100, 1.8], [124, 158, 2], [186, 172, 2.6], [70, 172, 1.8],
-];
-const PETALS: [number, number, number][] = [
-  [30, 40, 3], [80, 24, 2.2], [130, 54, 3.4], [184, 30, 2.4], [234, 60, 3],
-  [268, 34, 2.2], [54, 94, 2.6], [110, 118, 3.2], [170, 98, 2.4], [224, 120, 3],
-  [80, 162, 2.6], [200, 160, 3.2],
-];
 
 const PHOTO_FORMATS: { id: PhotoVariant; label: string }[] = [
   { id: 'polaroid', label: 'Polaroids' },
@@ -260,34 +243,7 @@ export default function CapsuleScreen() {
       <StatusBar style={theme.statusBar} />
       <LinearGradient colors={theme.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
 
-      {theme.art === 'mountains' ? (
-        <Svg width={width} height={(width * 90) / 292} viewBox="0 0 292 90" preserveAspectRatio="none" style={[styles.art, { top: insets.top + 250 }]}>
-          <Path d="M0 90 L0 55 L55 22 L110 60 L150 35 L200 68 L250 40 L292 64 L292 90 Z" fill="rgba(0,0,0,0.28)" />
-        </Svg>
-      ) : theme.art === 'stars' ? (
-        <Svg width={width} height={width * 0.8} viewBox="0 0 300 240" style={[styles.art, { top: insets.top + 36 }]}>
-          {STARS.map(([cx, cy], i) => (
-            <Circle key={i} cx={cx} cy={cy} r={i % 3 === 0 ? 2 : 1.2} fill="rgba(255,255,255,0.75)" />
-          ))}
-        </Svg>
-      ) : theme.art === 'sun' ? (
-        <Svg width={width} height={width * 0.6} viewBox="0 0 100 60" preserveAspectRatio="none" style={[styles.art, { top: insets.top + 110 }]}>
-          <Circle cx="50" cy="56" r="26" fill="rgba(255,236,210,0.20)" />
-          <Circle cx="50" cy="56" r="16" fill="rgba(255,236,210,0.28)" />
-        </Svg>
-      ) : theme.art === 'snow' ? (
-        <Svg width={width} height={width * 0.8} viewBox="0 0 300 240" style={[styles.art, { top: insets.top + 30 }]}>
-          {SNOW.map(([cx, cy, r], i) => (
-            <Circle key={i} cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.82)" />
-          ))}
-        </Svg>
-      ) : theme.art === 'petals' ? (
-        <Svg width={width} height={width * 0.8} viewBox="0 0 300 240" style={[styles.art, { top: insets.top + 40 }]}>
-          {PETALS.map(([cx, cy, r], i) => (
-            <Circle key={i} cx={cx} cy={cy} r={r} fill="rgba(247,201,217,0.5)" />
-          ))}
-        </Svg>
-      ) : null}
+      <ThemeArt art={theme.art} width={width} insetsTop={insets.top} />
 
       <View style={[styles.barDark, { paddingTop: insets.top + 6 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
@@ -408,7 +364,9 @@ export default function CapsuleScreen() {
             styles.themeBar,
             {
               paddingBottom: insets.bottom + 8,
-              backgroundColor: theme.statusBar === 'dark' ? 'rgba(8,10,22,0.72)' : 'rgba(255,255,255,0.72)',
+              // Match the bar tone to the background so the theme's onBg text always contrasts:
+              // dark themes (light text) get a dark bar; light themes (dark text) get a light bar.
+              backgroundColor: theme.statusBar === 'dark' ? 'rgba(255,255,255,0.82)' : 'rgba(8,10,22,0.82)',
             },
           ]}>
           <Animated.View style={[styles.themePanelClip, themePanelStyle]}>
@@ -431,7 +389,7 @@ export default function CapsuleScreen() {
                         end={{ x: 1, y: 1 }}
                         style={[styles.custSwatch, { borderColor: on ? theme.onBg : 'transparent' }]}
                       />
-                      <Text numberOfLines={1} style={[styles.themeName, { color: on ? theme.onBg : theme.onBgDim }]}>
+                      <Text numberOfLines={1} style={[styles.themeName, { color: theme.onBg, fontFamily: on ? Font.bold : Font.semibold }]}>
                         {th.name}
                       </Text>
                     </Pressable>
@@ -483,7 +441,6 @@ const styles = StyleSheet.create({
   sealedLock: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
 
   dark: { flex: 1 },
-  art: { position: 'absolute', left: 0, right: 0 },
   barDark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 },
   unlockedTag: { fontFamily: Font.bold, fontSize: 14 },
   darkScroll: { paddingHorizontal: 18 },
@@ -551,7 +508,7 @@ const styles = StyleSheet.create({
   custRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10 },
   custSwatch: { width: 30, height: 30, borderRadius: 9, borderWidth: 2 },
   themeOption: { alignItems: 'center', width: 56 },
-  themeName: { fontFamily: Font.medium, fontSize: 10, marginTop: 4, textAlign: 'center' },
+  themeName: { fontSize: 10.5, marginTop: 4, textAlign: 'center' },
   themeTab: { alignItems: 'center', paddingTop: 2 },
   themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
   themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },

@@ -2,7 +2,17 @@
 // gradient, the decorative art, and the on-background text colors. Shared so both
 // the viewer and (later) the create/edit customizer can use the same set.
 
-export type CapsuleArt = 'mountains' | 'stars' | 'sun' | 'snow' | 'petals' | 'none';
+export type CapsuleArt =
+  | 'mountains'
+  | 'stars'
+  | 'sun'
+  | 'petals'
+  | 'flowers'
+  | 'leaves'
+  | 'snowscape'
+  | 'graduation'
+  | 'christmas'
+  | 'none';
 
 export type CapsuleTheme = {
   id: string;
@@ -64,7 +74,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'spring',
     name: 'Spring',
     colors: ['#bfe0a8', '#d8eecb', '#eef6e2'],
-    art: 'petals',
+    art: 'flowers',
     onBg: '#3f5436',
     onBgDim: 'rgba(63,84,54,0.72)',
     statusBar: 'dark',
@@ -82,7 +92,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'fall',
     name: 'Autumn',
     colors: ['#3a2014', '#8a4424', '#d98a44'],
-    art: 'mountains',
+    art: 'leaves',
     onBg: '#fff0e0',
     onBgDim: 'rgba(255,240,224,0.82)',
     statusBar: 'light',
@@ -91,7 +101,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'winter',
     name: 'Winter',
     colors: ['#28394a', '#587a92', '#bcd6e2'],
-    art: 'snow',
+    art: 'snowscape',
     onBg: '#f0f7fb',
     onBgDim: 'rgba(240,247,251,0.85)',
     statusBar: 'light',
@@ -100,7 +110,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'floral',
     name: 'Floral',
     colors: ['#5a2a44', '#a85a7a', '#e8acc4'],
-    art: 'petals',
+    art: 'flowers',
     onBg: '#fff0f6',
     onBgDim: 'rgba(255,240,246,0.84)',
     statusBar: 'light',
@@ -118,7 +128,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'graduation',
     name: 'Graduation',
     colors: ['#19213f', '#2b3560', '#b89653'],
-    art: 'stars',
+    art: 'graduation',
     onBg: '#f4ecd6',
     onBgDim: 'rgba(244,236,214,0.8)',
     statusBar: 'light',
@@ -127,7 +137,7 @@ export const CAPSULE_THEMES: CapsuleTheme[] = [
     id: 'christmas',
     name: 'Christmas',
     colors: ['#2a1216', '#6e2228', '#a84a48'],
-    art: 'snow',
+    art: 'christmas',
     onBg: '#fdeeea',
     onBgDim: 'rgba(253,238,234,0.85)',
     statusBar: 'light',

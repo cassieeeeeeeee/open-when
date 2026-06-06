@@ -127,6 +127,7 @@ export type NewCapsule = {
   recipientId?: string;
   recipientUsername?: string;
   recipientEmail?: string;
+  theme?: string;
   contents?: CapsuleContent[];
 };
 

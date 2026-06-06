@@ -24,6 +24,7 @@ import {
   SharePlaneIcon,
   TrashIcon,
 } from '@/components/openwhen/icons';
+import { PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
@@ -35,13 +36,12 @@ const STARS: [number, number][] = [
   [265, 36], [40, 100], [150, 90], [250, 104], [95, 130],
 ];
 
-const LAYOUTS: { id: PhotoVariant; label: string }[] = [
+const PHOTO_FORMATS: { id: PhotoVariant; label: string }[] = [
   { id: 'polaroid', label: 'Polaroids' },
   { id: 'clothesline', label: 'Clothesline' },
   { id: 'filmstrip', label: 'Filmstrip' },
   { id: 'collage', label: 'Collage' },
 ];
-
 const ADD_TYPES: { type: CapsuleContent['type']; label: string }[] = [
   { type: 'text', label: 'Text' },
   { type: 'photo', label: 'Photos' },
@@ -65,23 +65,17 @@ export default function CapsuleScreen() {
   const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
   const isPreview = preview === '1';
 
-  // In preview, theme / layout / order can be changed live (and saved).
   const [themeOverride, setThemeOverride] = useState<string | undefined>(undefined);
-  const [layoutOverride, setLayoutOverride] = useState<string | undefined>(undefined);
   const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
+  const [photoPicker, setPhotoPicker] = useState(false);
 
   const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
-  const layout = (layoutOverride ?? capsule?.photoLayout ?? 'polaroid') as PhotoVariant;
   const contents = contentsDraft ?? capsule?.contents ?? [];
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
   const pickTheme = (t: string) => {
     setThemeOverride(t);
     if (id) updateCapsule(id, { theme: t });
-  };
-  const pickLayout = (l: string) => {
-    setLayoutOverride(l);
-    if (id) updateCapsule(id, { photoLayout: l });
   };
   const saveContents = (next: CapsuleContent[]) => {
     setContentsDraft(next);
@@ -94,14 +88,21 @@ export default function CapsuleScreen() {
     [next[index], next[j]] = [next[j], next[index]];
     saveContents(next);
   };
-  const addItem = (type: CapsuleContent['type']) => {
-    saveContents([...contents, { type, label: ADD_LABELS[type] }]);
+  const addItem = (type: CapsuleContent['type'], extra?: Partial<CapsuleContent>) => {
+    saveContents([...contents, { type, label: ADD_LABELS[type], ...extra }]);
+  };
+  const addPhoto = (format: PhotoVariant) => {
+    addItem('photo', { format, count: 4 });
+    setPhotoPicker(false);
   };
   const removeItem = (index: number) => {
     saveContents(contents.filter((_, k) => k !== index));
   };
+  const updateItem = (index: number, patch: Partial<CapsuleContent>) => {
+    saveContents(contents.map((c, k) => (k === index ? { ...c, ...patch } : c)));
+  };
 
-  // ---- Sealed capsule: a simple light placeholder ----
+  // ---- Sealed capsule ----
   if (!showReveal) {
     const tone = TONES[capsule?.tone ?? 'pink'];
     return (
@@ -135,12 +136,25 @@ export default function CapsuleScreen() {
   const whenLabel = detail?.unlockedOn ?? capsule?.date ?? '';
   const frost = theme.statusBar === 'dark' ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.22)';
 
-  const renderBlock = (item: CapsuleContent) => {
+  const renderBlock = (item: CapsuleContent, index: number) => {
     if (item.type === 'photo') {
+      const cnt = item.count ?? (parseInt(item.label, 10) || 4);
+      const fmt = (item.format ?? 'polaroid') as PhotoVariant;
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
-          <RevealPhotos count={parseInt(item.label, 10) || 4} variant={layout} />
+          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>
+            {cnt} {cnt === 1 ? 'photo' : 'photos'}
+          </Text>
+          {isPreview ? (
+            <PhotoBlockEditor
+              count={cnt}
+              format={fmt}
+              colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
+              onChange={(patch) => updateItem(index, patch)}
+            />
+          ) : (
+            <RevealPhotos count={cnt} variant={fmt} />
+          )}
         </View>
       );
     }
@@ -207,7 +221,7 @@ export default function CapsuleScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 190 : 96) }]}
+        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 130 : 96) }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
           <Text style={[styles.whenTitle, { color: theme.onBg }]}>{title}</Text>
@@ -262,16 +276,12 @@ export default function CapsuleScreen() {
                         <ChevronDownIcon size={16} color={theme.onBg} />
                       </View>
                     </Pressable>
-                    <Pressable
-                      onPress={() => removeItem(i)}
-                      hitSlop={8}
-                      accessibilityLabel="Remove item"
-                      style={styles.reorderDelete}>
+                    <Pressable onPress={() => removeItem(i)} hitSlop={8} accessibilityLabel="Remove item" style={styles.reorderDelete}>
                       <TrashIcon size={15} color={theme.onBg} />
                     </Pressable>
                   </View>
                 ) : null}
-                {renderBlock(item)}
+                {renderBlock(item, i)}
               </View>
             ))}
 
@@ -288,12 +298,26 @@ export default function CapsuleScreen() {
                   {ADD_TYPES.map((t) => (
                     <Pressable
                       key={t.type}
-                      onPress={() => addItem(t.type)}
-                      style={[styles.addChip, { borderColor: theme.onBgDim }]}>
-                      <Text style={[styles.addChipText, { color: theme.onBg }]}>+ {t.label}</Text>
+                      onPress={() => (t.type === 'photo' ? setPhotoPicker((v) => !v) : addItem(t.type))}
+                      style={[styles.addChip, { borderColor: theme.onBgDim }, t.type === 'photo' && photoPicker && { backgroundColor: theme.onBg }]}>
+                      <Text style={[styles.addChipText, { color: t.type === 'photo' && photoPicker ? theme.colors[0] : theme.onBg }]}>
+                        + {t.label}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
+                {photoPicker ? (
+                  <View style={styles.fmtPick}>
+                    <Text style={[styles.fmtPickLabel, { color: theme.onBgDim }]}>Choose a format:</Text>
+                    <View style={styles.fmtPickChips}>
+                      {PHOTO_FORMATS.map((f) => (
+                        <Pressable key={f.id} onPress={() => addPhoto(f.id)} style={[styles.fmtPickChip, { borderColor: theme.onBgDim }]}>
+                          <Text style={[styles.fmtPickText, { color: theme.onBg }]}>{f.label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </>
@@ -309,7 +333,7 @@ export default function CapsuleScreen() {
               backgroundColor: theme.statusBar === 'dark' ? 'rgba(8,10,22,0.66)' : 'rgba(255,255,255,0.66)',
             },
           ]}>
-          <Text style={[styles.custTitle, { color: theme.onBgDim }]}>Customize the reveal</Text>
+          <Text style={[styles.custTitle, { color: theme.onBgDim }]}>Theme</Text>
           <View style={styles.custRow}>
             {CAPSULE_THEMES.map((th) => {
               const on = (themeOverride ?? capsule?.theme ?? 'twilight') === th.id;
@@ -325,19 +349,6 @@ export default function CapsuleScreen() {
               );
             })}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.custChips}>
-            {LAYOUTS.map((l) => {
-              const on = layout === l.id;
-              return (
-                <Pressable
-                  key={l.id}
-                  onPress={() => pickLayout(l.id)}
-                  style={[styles.custChip, on ? { backgroundColor: theme.onBg } : { borderColor: theme.onBgDim, borderWidth: 1 }]}>
-                  <Text style={[styles.custChipText, { color: on ? theme.colors[0] : theme.onBg }]}>{l.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
         </View>
       ) : (
         <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
@@ -391,24 +402,22 @@ const styles = StyleSheet.create({
   sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
   sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
   videoTile: { height: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  playBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
 
   reorder: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18, marginTop: 14, marginBottom: -6 },
-  reorderDelete: { marginLeft: 2 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
+  reorderDelete: { marginLeft: 2 },
   emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
   addWrap: { marginTop: 24 },
   addLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   addChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
   addChipText: { fontFamily: Font.semibold, fontSize: 12.5 },
+  fmtPick: { marginTop: 12 },
+  fmtPickLabel: { fontFamily: Font.semibold, fontSize: 12, marginBottom: 8 },
+  fmtPickChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fmtPickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
+  fmtPickText: { fontFamily: Font.semibold, fontSize: 12.5 },
 
   player: { marginTop: 18 },
   track: { height: 4, borderRadius: 4, overflow: 'hidden' },
@@ -429,11 +438,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
   },
   custTitle: { fontFamily: Font.bold, fontSize: 12.5, textAlign: 'center', marginBottom: 10 },
-  custRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 12 },
+  custRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
   custSwatch: { width: 30, height: 30, borderRadius: 9, borderWidth: 2 },
-  custChips: { flexDirection: 'row', gap: 8, paddingHorizontal: 4, flexGrow: 1, justifyContent: 'center' },
-  custChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16 },
-  custChipText: { fontFamily: Font.bold, fontSize: 12.5 },
 
   actions: {
     position: 'absolute',

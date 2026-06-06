@@ -128,7 +128,6 @@ export type NewCapsule = {
   recipientUsername?: string;
   recipientEmail?: string;
   theme?: string;
-  photoLayout?: string;
   contents?: CapsuleContent[];
 };
 

@@ -20,7 +20,6 @@ export type Capsule = {
   recipientEmail?: string; // recipient's email captured at send time
   fromName?: string; // sender's display name (shown as "From" on received capsules)
   theme?: string; // chosen reveal theme id (see constants/capsuleThemes)
-  photoLayout?: string; // reveal photo layout (RevealPhotos variant)
   direction: 'created' | 'received'; // made by the user vs sent to them
   status: 'sealed' | 'unlocked'; // not yet opened vs opened
   contents?: CapsuleContent[]; // what's been added inside
@@ -30,6 +29,8 @@ export type CapsuleContent = {
   type: 'text' | 'photo' | 'video' | 'playlist';
   label: string;
   preview?: string; // short snippet shown when the item is expanded
+  format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
+  count?: number; // for photos: how many images
 };
 
 /** All capsules — created by the user (for others) or received (from others). */

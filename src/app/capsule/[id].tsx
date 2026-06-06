@@ -22,6 +22,7 @@ import {
   PlayIcon,
   SaveIcon,
   SharePlaneIcon,
+  TrashIcon,
 } from '@/components/openwhen/icons';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
@@ -95,6 +96,9 @@ export default function CapsuleScreen() {
   };
   const addItem = (type: CapsuleContent['type']) => {
     saveContents([...contents, { type, label: ADD_LABELS[type] }]);
+  };
+  const removeItem = (index: number) => {
+    saveContents(contents.filter((_, k) => k !== index));
   };
 
   // ---- Sealed capsule: a simple light placeholder ----
@@ -258,6 +262,13 @@ export default function CapsuleScreen() {
                         <ChevronDownIcon size={16} color={theme.onBg} />
                       </View>
                     </Pressable>
+                    <Pressable
+                      onPress={() => removeItem(i)}
+                      hitSlop={8}
+                      accessibilityLabel="Remove item"
+                      style={styles.reorderDelete}>
+                      <TrashIcon size={15} color={theme.onBg} />
+                    </Pressable>
                   </View>
                 ) : null}
                 {renderBlock(item)}
@@ -390,6 +401,7 @@ const styles = StyleSheet.create({
   },
 
   reorder: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18, marginTop: 14, marginBottom: -6 },
+  reorderDelete: { marginLeft: 2 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
   emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
   addWrap: { marginTop: 24 },

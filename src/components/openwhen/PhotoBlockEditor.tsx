@@ -20,12 +20,25 @@ const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRAD
 
 type Colors = { onBg: string; onBgDim: string; base: string };
 
-const CELL = 52; // thumbnail (44) + gap (8)
+const CELL = 54; // thumbnail (46) + gap (8)
 
-// Horizontal strip of draggable thumbnails — drag left/right to reorder.
-function DraggableImages({ ids, onReorder }: { ids: number[]; onReorder: (next: number[]) => void }) {
+// Horizontal strip of draggable thumbnails (styled per format) — drag to reorder.
+function DraggableImages({ ids, format, onReorder }: { ids: number[]; format: PhotoVariant; onReorder: (next: number[]) => void }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const dx = useRef(new Animated.Value(0)).current;
+
+  const renderTile = (id: number, i: number) => {
+    const img = <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={d.img} />;
+    if (format === 'filmstrip') return <View style={d.film}>{img}</View>;
+    if (format === 'collage') return <View style={d.collage}>{img}</View>;
+    const tilt = i % 2 ? '4deg' : '-4deg';
+    return (
+      <View style={[d.polaroid, { transform: [{ rotate: tilt }] }]}>
+        {format === 'clothesline' ? <View style={d.peg} /> : null}
+        {img}
+      </View>
+    );
+  };
 
   return (
     <View style={d.strip}>
@@ -58,8 +71,8 @@ function DraggableImages({ ids, onReorder }: { ids: number[]; onReorder: (next: 
           <Animated.View
             key={i}
             {...responder.panHandlers}
-            style={[d.cell, isDrag && { transform: [{ translateX: dx }], zIndex: 10, elevation: 8, opacity: 0.92 }]}>
-            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={d.img} />
+            style={[d.cell, isDrag && { transform: [{ translateX: dx }], zIndex: 10, elevation: 8, opacity: 0.95 }]}>
+            {renderTile(id, i)}
           </Animated.View>
         );
       })}
@@ -67,7 +80,7 @@ function DraggableImages({ ids, onReorder }: { ids: number[]; onReorder: (next: 
   );
 }
 
-// Per-photo-item editor: drag to rearrange, change format, add, and select-to-remove.
+// Per-photo-item editor: drag to rearrange (in-format), change format, add, select-to-remove.
 export function PhotoBlockEditor({
   images,
   format,
@@ -125,7 +138,7 @@ export function PhotoBlockEditor({
   return (
     <View>
       {images.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag to rearrange</Text> : null}
-      <DraggableImages ids={images} onReorder={(next) => onChange({ images: next, count: next.length })} />
+      <DraggableImages ids={images} format={format} onReorder={(next) => onChange({ images: next, count: next.length })} />
       <View style={s.fmtRow}>
         {FORMATS.map((f) => {
           const on = format === f.id;
@@ -152,9 +165,23 @@ export function PhotoBlockEditor({
 }
 
 const d = StyleSheet.create({
-  strip: { flexDirection: 'row', gap: 8, paddingTop: 8, alignItems: 'center' },
-  cell: { width: 44 },
-  img: { width: 44, height: 44, borderRadius: 6 },
+  strip: { flexDirection: 'row', gap: 8, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
+  cell: { width: 46 },
+  img: { width: '100%', aspectRatio: 1, borderRadius: 2 },
+  polaroid: {
+    backgroundColor: '#fffdf8',
+    borderRadius: 3,
+    padding: 3,
+    paddingBottom: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  film: { backgroundColor: '#2b2b30', borderRadius: 3, padding: 4 },
+  collage: { borderRadius: 8, overflow: 'hidden' },
+  peg: { position: 'absolute', top: -5, alignSelf: 'center', width: 7, height: 12, borderRadius: 2, backgroundColor: '#c9966a', zIndex: 2 },
 });
 
 const s = StyleSheet.create({
@@ -183,7 +210,7 @@ const s = StyleSheet.create({
   cancelText: { fontFamily: Font.semibold, fontSize: 13 },
   removeBtn: { backgroundColor: '#c0504d', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8 },
   removeText: { fontFamily: Font.bold, fontSize: 13, color: '#fff' },
-  fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   fmtChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' },

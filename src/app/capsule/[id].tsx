@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import {
+  ChevronDownIcon,
   ChevronLeftIcon,
   EnvelopeGlyph,
   HeartIcon,
@@ -25,7 +26,7 @@ import {
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
-import { unlockedDetail } from '@/data/sample';
+import { type CapsuleContent, unlockedDetail } from '@/data/sample';
 import { updateCapsule, useCapsule } from '@/lib/capsules';
 
 const STARS: [number, number][] = [
@@ -40,6 +41,19 @@ const LAYOUTS: { id: PhotoVariant; label: string }[] = [
   { id: 'collage', label: 'Collage' },
 ];
 
+const ADD_TYPES: { type: CapsuleContent['type']; label: string }[] = [
+  { type: 'text', label: 'Text' },
+  { type: 'photo', label: 'Photos' },
+  { type: 'video', label: 'Video' },
+  { type: 'playlist', label: 'Playlist' },
+];
+const ADD_LABELS: Record<CapsuleContent['type'], string> = {
+  text: 'A note',
+  photo: 'Photos',
+  video: 'Video',
+  playlist: 'Playlist',
+};
+
 export default function CapsuleScreen() {
   const { id, preview } = useLocalSearchParams<{ id: string; preview?: string }>();
   const router = useRouter();
@@ -50,11 +64,14 @@ export default function CapsuleScreen() {
   const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
   const isPreview = preview === '1';
 
-  // In preview, theme/layout can be changed live (and saved); otherwise they come from the capsule.
+  // In preview, theme / layout / order can be changed live (and saved).
   const [themeOverride, setThemeOverride] = useState<string | undefined>(undefined);
   const [layoutOverride, setLayoutOverride] = useState<string | undefined>(undefined);
+  const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
+
   const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
   const layout = (layoutOverride ?? capsule?.photoLayout ?? 'polaroid') as PhotoVariant;
+  const contents = contentsDraft ?? capsule?.contents ?? [];
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
   const pickTheme = (t: string) => {
@@ -64,6 +81,20 @@ export default function CapsuleScreen() {
   const pickLayout = (l: string) => {
     setLayoutOverride(l);
     if (id) updateCapsule(id, { photoLayout: l });
+  };
+  const saveContents = (next: CapsuleContent[]) => {
+    setContentsDraft(next);
+    if (id) updateCapsule(id, { contents: next });
+  };
+  const moveItem = (index: number, dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= contents.length) return;
+    const next = [...contents];
+    [next[index], next[j]] = [next[j], next[index]];
+    saveContents(next);
+  };
+  const addItem = (type: CapsuleContent['type']) => {
+    saveContents([...contents, { type, label: ADD_LABELS[type] }]);
   };
 
   // ---- Sealed capsule: a simple light placeholder ----
@@ -95,18 +126,51 @@ export default function CapsuleScreen() {
     );
   }
 
-  // ---- Unlocked / preview: the themeable reveal ----
   const title = detail?.title ?? capsule?.title ?? 'A capsule';
   const fromName = detail?.fromName ?? capsule?.fromName ?? capsule?.who ?? 'Someone';
   const whenLabel = detail?.unlockedOn ?? capsule?.date ?? '';
-  const textItem = capsule?.contents?.find((c) => c.type === 'text');
-  const paragraphs =
-    detail?.letter ??
-    (textItem?.preview ? textItem.preview.split('\n') : textItem ? [textItem.label] : ['Your message will appear here.']);
-  const photoItem = capsule?.contents?.find((c) => c.type === 'photo');
-  const playlistItem = capsule?.contents?.find((c) => c.type === 'playlist');
-  const audio = detail?.audio;
   const frost = theme.statusBar === 'dark' ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.22)';
+
+  const renderBlock = (item: CapsuleContent) => {
+    if (item.type === 'photo') {
+      return (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
+          <RevealPhotos count={parseInt(item.label, 10) || 4} variant={layout} />
+        </View>
+      );
+    }
+    if (item.type === 'video') {
+      return (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
+          <LinearGradient colors={[theme.colors[1], theme.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.videoTile}>
+            <View style={styles.playBadge}>
+              <PlayIcon size={18} color={OW.dark} />
+            </View>
+          </LinearGradient>
+        </View>
+      );
+    }
+    if (item.type === 'playlist') {
+      return (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
+          {item.preview ? <Text style={[styles.sectionText, { color: theme.onBgDim }]}>{item.preview}</Text> : null}
+        </View>
+      );
+    }
+    const lines = item.preview ? item.preview.split('\n') : [item.label];
+    return (
+      <View style={styles.letter}>
+        {lines.map((p, k) => (
+          <Text key={k} style={styles.letterP}>
+            {p}
+          </Text>
+        ))}
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.dark, { backgroundColor: theme.colors[0] }]}>
@@ -139,7 +203,7 @@ export default function CapsuleScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 180 : 96) }]}
+        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 190 : 96) }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
           <Text style={[styles.whenTitle, { color: theme.onBg }]}>{title}</Text>
@@ -150,48 +214,79 @@ export default function CapsuleScreen() {
           {whenLabel ? `\n${isPreview ? 'Opens' : 'Unlocked'}: ${whenLabel}` : ''}
         </Text>
 
-        <View style={styles.letter}>
-          {paragraphs.map((p, i) => (
-            <Text key={i} style={styles.letterP}>
-              {p}
-            </Text>
-          ))}
-          {detail?.closing ? <Text style={styles.letterP}>{detail.closing}</Text> : null}
-          {detail?.signature ? <Text style={styles.sig}>{detail.signature}</Text> : null}
-        </View>
-
-        {photoItem ? (
-          <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{photoItem.label}</Text>
-            <RevealPhotos count={parseInt(photoItem.label, 10) || 4} variant={layout} />
-          </View>
-        ) : null}
-
-        {playlistItem ? (
-          <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{playlistItem.label}</Text>
-            {playlistItem.preview ? (
-              <Text style={[styles.sectionText, { color: theme.onBgDim }]}>{playlistItem.preview}</Text>
+        {detail ? (
+          <>
+            <View style={styles.letter}>
+              {detail.letter.map((p, i) => (
+                <Text key={i} style={styles.letterP}>
+                  {p}
+                </Text>
+              ))}
+              <Text style={styles.letterP}>{detail.closing}</Text>
+              <Text style={styles.sig}>{detail.signature}</Text>
+            </View>
+            {detail.audio ? (
+              <View style={styles.player}>
+                <View style={[styles.track, { backgroundColor: frost }]}>
+                  <View style={[styles.trackFill, { width: `${detail.audio.progress * 100}%`, backgroundColor: theme.onBg }]} />
+                </View>
+                <View style={styles.timeRow}>
+                  <Text style={[styles.time, { color: theme.onBgDim }]}>{detail.audio.position}</Text>
+                  <Text style={[styles.time, { color: theme.onBgDim }]}>{detail.audio.duration}</Text>
+                </View>
+                <View style={styles.playRow}>
+                  <Pressable style={styles.playBtn}>
+                    <PlayIcon size={15} color={OW.dark} />
+                  </Pressable>
+                </View>
+              </View>
             ) : null}
-          </View>
-        ) : null}
+          </>
+        ) : (
+          <>
+            {contents.map((item, i) => (
+              <View key={i}>
+                {isPreview ? (
+                  <View style={styles.reorder}>
+                    <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
+                      <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
+                        <ChevronDownIcon size={16} color={theme.onBg} />
+                      </View>
+                    </Pressable>
+                    <Pressable onPress={() => moveItem(i, 1)} disabled={i === contents.length - 1} hitSlop={8}>
+                      <View style={{ opacity: i === contents.length - 1 ? 0.3 : 1 }}>
+                        <ChevronDownIcon size={16} color={theme.onBg} />
+                      </View>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {renderBlock(item)}
+              </View>
+            ))}
 
-        {audio ? (
-          <View style={styles.player}>
-            <View style={[styles.track, { backgroundColor: frost }]}>
-              <View style={[styles.trackFill, { width: `${audio.progress * 100}%`, backgroundColor: theme.onBg }]} />
-            </View>
-            <View style={styles.timeRow}>
-              <Text style={[styles.time, { color: theme.onBgDim }]}>{audio.position}</Text>
-              <Text style={[styles.time, { color: theme.onBgDim }]}>{audio.duration}</Text>
-            </View>
-            <View style={styles.playRow}>
-              <Pressable style={styles.playBtn}>
-                <PlayIcon size={15} color={OW.dark} />
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
+            {contents.length === 0 ? (
+              <Text style={[styles.emptyReveal, { color: theme.onBgDim }]}>
+                Nothing inside yet{isPreview ? ' — add something below.' : '.'}
+              </Text>
+            ) : null}
+
+            {isPreview ? (
+              <View style={styles.addWrap}>
+                <Text style={[styles.addLabel, { color: theme.onBgDim }]}>Add to this capsule</Text>
+                <View style={styles.addRow}>
+                  {ADD_TYPES.map((t) => (
+                    <Pressable
+                      key={t.type}
+                      onPress={() => addItem(t.type)}
+                      style={[styles.addChip, { borderColor: theme.onBgDim }]}>
+                      <Text style={[styles.addChipText, { color: theme.onBg }]}>+ {t.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </>
+        )}
       </ScrollView>
 
       {isPreview ? (
@@ -252,29 +347,16 @@ export default function CapsuleScreen() {
 const styles = StyleSheet.create({
   spacer: { width: 22 },
 
-  // Sealed (light) view
   sealed: { flex: 1, backgroundColor: OW.bg, paddingHorizontal: 18 },
   barLight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sealedBody: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 60 },
-  sealedTitle: {
-    fontFamily: Font.extrabold,
-    fontSize: 20,
-    color: OW.ink,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  sealedTitle: { fontFamily: Font.extrabold, fontSize: 20, color: OW.ink, textAlign: 'center', marginTop: 8 },
   sealedSub: { fontFamily: Font.regular, fontSize: 13, color: OW.muted },
   sealedLock: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
 
-  // Unlocked (themeable) view
   dark: { flex: 1 },
   art: { position: 'absolute', left: 0, right: 0 },
-  barDark: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-  },
+  barDark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 },
   unlockedTag: { fontFamily: Font.bold, fontSize: 14 },
   darkScroll: { paddingHorizontal: 18 },
   titleWrap: { alignItems: 'center', gap: 8, marginTop: 18 },
@@ -284,7 +366,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f7f2e8',
     borderRadius: 16,
     padding: 18,
-    marginTop: 18,
+    marginTop: 12,
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 15,
@@ -294,9 +376,27 @@ const styles = StyleSheet.create({
   letterP: { fontFamily: Font.regular, fontSize: 14, color: '#3a3630', lineHeight: 22, marginBottom: 11 },
   sig: { fontFamily: Font.script, fontSize: 20, color: '#3a3630' },
 
-  section: { marginTop: 18 },
+  section: { marginTop: 12 },
   sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
   sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
+  videoTile: { height: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  playBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  reorder: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18, marginTop: 14, marginBottom: -6 },
+  arrowUp: { transform: [{ rotate: '180deg' }] },
+  emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
+  addWrap: { marginTop: 24 },
+  addLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
+  addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  addChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
+  addChipText: { fontFamily: Font.semibold, fontSize: 12.5 },
 
   player: { marginTop: 18 },
   track: { height: 4, borderRadius: 4, overflow: 'hidden' },
@@ -304,14 +404,7 @@ const styles = StyleSheet.create({
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   time: { fontFamily: Font.regular, fontSize: 11 },
   playRow: { alignItems: 'center', marginTop: 8 },
-  playBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  playBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
 
   customizer: {
     position: 'absolute',

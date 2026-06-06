@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -72,6 +73,11 @@ export default function CapsuleScreen() {
   const [photoPicker, setPhotoPicker] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [scrollLocked, setScrollLocked] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [themePanelH, setThemePanelH] = useState(0);
+  const themeMenu = useSharedValue(0);
+  const themePanelStyle = useAnimatedStyle(() => ({ height: themeMenu.value * themePanelH, opacity: themeMenu.value }));
+  const themeChevronStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 - themeMenu.value * 180}deg` }] }));
 
   const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
   const contents = contentsDraft ?? capsule?.contents ?? [];
@@ -80,6 +86,12 @@ export default function CapsuleScreen() {
   const pickTheme = (t: string) => {
     setThemeOverride(t);
     if (id) updateCapsule(id, { theme: t });
+  };
+  // The theme picker lives in a pull-up tab: tap to open, and it drops back down once a
+  // swatch is chosen so it never sits in front of the reveal.
+  const setThemeMenu = (open: boolean) => {
+    setThemeMenuOpen(open);
+    themeMenu.value = withTiming(open ? 1 : 0, { duration: 240, easing: Easing.out(Easing.cubic) });
   };
   const saveContents = (next: CapsuleContent[]) => {
     setContentsDraft(next);
@@ -369,28 +381,52 @@ export default function CapsuleScreen() {
       {isPreview ? (
         <View
           style={[
-            styles.customizer,
+            styles.themeBar,
             {
-              paddingBottom: insets.bottom + 12,
-              backgroundColor: theme.statusBar === 'dark' ? 'rgba(8,10,22,0.66)' : 'rgba(255,255,255,0.66)',
+              paddingBottom: insets.bottom + 8,
+              backgroundColor: theme.statusBar === 'dark' ? 'rgba(8,10,22,0.72)' : 'rgba(255,255,255,0.72)',
             },
           ]}>
-          <Text style={[styles.custTitle, { color: theme.onBgDim }]}>Theme</Text>
-          <View style={styles.custRow}>
-            {CAPSULE_THEMES.map((th) => {
-              const on = (themeOverride ?? capsule?.theme ?? 'twilight') === th.id;
-              return (
-                <Pressable key={th.id} onPress={() => pickTheme(th.id)} hitSlop={4}>
-                  <LinearGradient
-                    colors={th.colors}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.custSwatch, { borderColor: on ? theme.onBg : 'transparent' }]}
-                  />
-                </Pressable>
-              );
-            })}
-          </View>
+          <Animated.View style={[styles.themePanelClip, themePanelStyle]}>
+            <View style={styles.themePanelInner} onLayout={(e) => setThemePanelH(e.nativeEvent.layout.height)}>
+              <View style={styles.custRow}>
+                {CAPSULE_THEMES.map((th) => {
+                  const on = (themeOverride ?? capsule?.theme ?? 'twilight') === th.id;
+                  return (
+                    <Pressable
+                      key={th.id}
+                      onPress={() => {
+                        pickTheme(th.id);
+                        setThemeMenu(false);
+                      }}
+                      hitSlop={4}>
+                      <LinearGradient
+                        colors={th.colors}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[styles.custSwatch, { borderColor: on ? theme.onBg : 'transparent' }]}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </Animated.View>
+          <Pressable onPress={() => setThemeMenu(!themeMenuOpen)} style={styles.themeTab} hitSlop={6} accessibilityLabel="Toggle theme menu">
+            <View style={[styles.themeGrabber, { backgroundColor: theme.onBgDim }]} />
+            <View style={styles.themeTabRow}>
+              <Text style={[styles.themeTabText, { color: theme.onBg }]}>Theme</Text>
+              <LinearGradient
+                colors={theme.colors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.themeTabSwatch, { borderColor: theme.onBg }]}
+              />
+              <Animated.View style={themeChevronStyle}>
+                <ChevronDownIcon size={15} color={theme.onBg} />
+              </Animated.View>
+            </View>
+          </Pressable>
         </View>
       ) : (
         <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
@@ -470,19 +506,25 @@ const styles = StyleSheet.create({
   playRow: { alignItems: 'center', marginTop: 8 },
   playBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
 
-  customizer: {
+  themeBar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: 12,
+    paddingTop: 6,
     paddingHorizontal: 16,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
   },
-  custTitle: { fontFamily: Font.bold, fontSize: 12.5, textAlign: 'center', marginBottom: 10 },
-  custRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  themePanelClip: { overflow: 'hidden', alignSelf: 'stretch' },
+  themePanelInner: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 8, paddingBottom: 8 },
+  custRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10 },
   custSwatch: { width: 30, height: 30, borderRadius: 9, borderWidth: 2 },
+  themeTab: { alignItems: 'center', paddingTop: 2 },
+  themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
+  themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },
+  themeTabText: { fontFamily: Font.bold, fontSize: 12.5 },
+  themeTabSwatch: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.5 },
 
   actions: {
     position: 'absolute',

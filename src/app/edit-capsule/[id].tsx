@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -14,6 +15,7 @@ import {
   VideoIcon,
 } from '@/components/openwhen/icons';
 import { ContentItemRow } from '@/components/openwhen/ui';
+import { CAPSULE_THEMES } from '@/constants/capsuleThemes';
 import { Font, OW, Radius, type Tone, TONES } from '@/constants/openwhen';
 import { type CapsuleContent } from '@/data/sample';
 import { deleteCapsule, updateCapsule, useCapsule } from '@/lib/capsules';
@@ -100,6 +102,12 @@ export default function EditCapsuleScreen() {
           </View>
         </View>
 
+        <Pressable
+          style={styles.previewBtn}
+          onPress={() => id && router.push({ pathname: '/capsule/[id]', params: { id, preview: '1' } })}>
+          <Text style={styles.previewText}>Preview capsule ✨</Text>
+        </Pressable>
+
         {opened ? (
           <Text style={styles.openedNote}>This capsule has been opened — it’s locked from edits.</Text>
         ) : null}
@@ -165,6 +173,27 @@ export default function EditCapsuleScreen() {
                 <Text style={styles.releaseText}>Release capsule now</Text>
               </Pressable>
             ) : null}
+
+            <Text style={styles.label}>Reveal theme</Text>
+            <View style={styles.themesRow}>
+              {CAPSULE_THEMES.map((th) => {
+                const on = (capsule?.theme ?? 'twilight') === th.id;
+                return (
+                  <Pressable
+                    key={th.id}
+                    onPress={() => id && updateCapsule(id, { theme: th.id })}
+                    style={styles.themeWrap}>
+                    <LinearGradient
+                      colors={th.colors}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[styles.themeSwatch, on && styles.themeSwatchOn]}
+                    />
+                    <Text style={[styles.themeName, on && styles.themeNameOn]}>{th.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
             <Pressable style={styles.reseal} onPress={() => router.back()}>
               <Text style={styles.resealText}>Reseal capsule</Text>
@@ -305,4 +334,20 @@ const styles = StyleSheet.create({
     borderColor: OW.dark,
   },
   releaseText: { fontFamily: Font.bold, fontSize: 15, color: OW.dark },
+  previewBtn: {
+    marginTop: 14,
+    borderRadius: Radius.pill,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: OW.cardSoft,
+    borderWidth: 1,
+    borderColor: OW.line,
+  },
+  previewText: { fontFamily: Font.bold, fontSize: 14, color: OW.ink },
+  themesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 2 },
+  themeWrap: { alignItems: 'center', gap: 5, width: 56 },
+  themeSwatch: { width: 44, height: 44, borderRadius: 12, borderWidth: 2, borderColor: 'transparent' },
+  themeSwatchOn: { borderColor: OW.dark },
+  themeName: { fontFamily: Font.medium, fontSize: 11, color: OW.muted },
+  themeNameOn: { color: OW.ink },
 });

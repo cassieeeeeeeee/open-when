@@ -126,6 +126,9 @@ function DraggablePhotos({
       onPanResponderGrant: () => {
         armed.current = false;
         pan.setValue({ x: 0, y: 0 });
+        // Re-measure every photo's CURRENT on-screen position now (handles page
+        // scroll / a just-finished swap animation that left old measurements stale).
+        ids.forEach((tid) => measure(tid));
         clearTimer();
         timer.current = setTimeout(() => {
           armed.current = true;
@@ -183,6 +186,7 @@ function DraggablePhotos({
     return (
       <Animated.View
         key={id}
+        accessibilityLabel={`drag-photo-${id}`}
         ref={(el) => {
           refs.current[id] = el as never;
         }}

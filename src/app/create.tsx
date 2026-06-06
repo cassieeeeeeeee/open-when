@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -13,6 +14,7 @@ import {
   VideoIcon,
 } from '@/components/openwhen/icons';
 import { DateField } from '@/components/openwhen/DateField';
+import { CAPSULE_THEMES } from '@/constants/capsuleThemes';
 import { Font, OW, Radius, Tone, TONES } from '@/constants/openwhen';
 import { createCapsule } from '@/lib/capsules';
 import { findRecipient, type Recipient } from '@/lib/users';
@@ -33,6 +35,7 @@ export default function CreateScreen() {
   const [recipientQuery, setRecipientQuery] = useState('');
   const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [lookup, setLookup] = useState<'idle' | 'searching' | 'notfound'>('idle');
+  const [themeId, setThemeId] = useState('twilight');
   const [saving, setSaving] = useState(false);
   const [unlockDate, setUnlockDate] = useState(() => {
     const d = new Date();
@@ -66,7 +69,6 @@ export default function CreateScreen() {
   const create = async () => {
     if (saving) return;
     setSaving(true);
-    // If they typed someone but didn't tap Find, try to resolve it now.
     let to = recipient;
     if (!to && recipientQuery.trim()) {
       try {
@@ -80,6 +82,7 @@ export default function CreateScreen() {
       who: to?.displayName || to?.username || recipientQuery.trim() || 'Someone special',
       date: unlockDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
       tone: 'pink',
+      theme: themeId,
       recipientId: to?.uid,
       recipientUsername: to?.username,
       recipientEmail: to?.email,
@@ -171,6 +174,25 @@ export default function CreateScreen() {
 
         <Text style={styles.label}>Unlock on</Text>
         <DateField value={unlockDate} onChange={setUnlockDate} />
+
+        <Text style={styles.label}>How it opens</Text>
+        <Text style={styles.hint}>Pick the theme they&apos;ll see when the capsule unlocks.</Text>
+        <View style={styles.themesRow}>
+          {CAPSULE_THEMES.map((th) => {
+            const on = themeId === th.id;
+            return (
+              <Pressable key={th.id} onPress={() => setThemeId(th.id)} style={styles.themeWrap}>
+                <LinearGradient
+                  colors={th.colors}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.themeSwatch, on && styles.themeSwatchOn]}
+                />
+                <Text style={[styles.themeName, on && styles.themeNameOn]}>{th.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Text style={styles.label}>Add a message or memory</Text>
         <View style={styles.msgGrid}>
@@ -265,6 +287,13 @@ const styles = StyleSheet.create({
   foundInitial: { fontFamily: Font.bold, fontSize: 15, color: '#fff' },
   foundName: { fontFamily: Font.bold, fontSize: 14, color: OW.ink },
   foundHandle: { fontFamily: Font.regular, fontSize: 12, color: OW.muted, marginTop: 1 },
+
+  themesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 2 },
+  themeWrap: { alignItems: 'center', gap: 5, width: 56 },
+  themeSwatch: { width: 44, height: 44, borderRadius: 12, borderWidth: 2, borderColor: 'transparent' },
+  themeSwatchOn: { borderColor: OW.dark },
+  themeName: { fontFamily: Font.medium, fontSize: 11, color: OW.muted },
+  themeNameOn: { color: OW.ink },
 
   msgGrid: { flexDirection: 'row', gap: 8 },
   msgBtn: { flex: 1, borderRadius: 13, paddingVertical: 11, alignItems: 'center', gap: 5 },

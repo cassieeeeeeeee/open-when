@@ -61,14 +61,14 @@ function Polaroids({ ids, extra, renderItem }: { ids: number[]; extra: number; r
     <View style={p.wrap}>
       {ids.map((id, i) =>
         renderItem(
-          <View style={[p.card, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
-            <View style={[p.tape, { backgroundColor: TAPES[i % TAPES.length] }]} />
+          <View style={[p.card, { transform: [{ rotate: TILTS[id % TILTS.length] }] }]}>
+            <View style={[p.tape, { backgroundColor: TAPES[id % TAPES.length] }]} />
             <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={p.photo} />
-            <Text style={p.doodle}>{DOODLES[i % DOODLES.length]}</Text>
+            <Text style={p.doodle}>{DOODLES[id % DOODLES.length]}</Text>
           </View>,
           i,
           id,
-          [p.slot, { marginTop: OFFSETS[i % OFFSETS.length] }],
+          [p.slot, { marginTop: OFFSETS[id % OFFSETS.length] }],
         ),
       )}
       {extra > 0 ? (
@@ -97,14 +97,14 @@ function Clothesline({ ids, renderItem }: { ids: number[]; renderItem: PhotoRend
         {ids.map((id, i) =>
           renderItem(
             <>
-              <View style={[cl.peg, { backgroundColor: PEGS[i % PEGS.length] }]} />
-              <View style={[cl.frame, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
+              <View style={[cl.peg, { backgroundColor: PEGS[id % PEGS.length] }]} />
+              <View style={[cl.frame, { transform: [{ rotate: TILTS[id % TILTS.length] }] }]}>
                 <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cl.photo} />
               </View>
             </>,
             i,
             id,
-            [cl.hang, { marginTop: HANGS[i % HANGS.length] }],
+            [cl.hang, { marginTop: HANGS[id % HANGS.length] }],
           ),
         )}
       </View>

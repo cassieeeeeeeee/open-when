@@ -71,6 +71,7 @@ export default function CapsuleScreen() {
   const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
   const [photoPicker, setPhotoPicker] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [scrollLocked, setScrollLocked] = useState(false);
 
   const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
   const contents = contentsDraft ?? capsule?.contents ?? [];
@@ -173,6 +174,7 @@ export default function CapsuleScreen() {
                 setEditingIndex(null);
               }}
               onCancel={() => setEditingIndex(null)}
+              onDragActive={setScrollLocked}
             />
           ) : (
             <RevealPhotos images={imgs} variant={fmt} />
@@ -260,6 +262,7 @@ export default function CapsuleScreen() {
       </View>
 
       <ScrollView
+        scrollEnabled={!scrollLocked}
         contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 130 : 96) }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>

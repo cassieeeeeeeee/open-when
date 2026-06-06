@@ -66,11 +66,23 @@ function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string
 
 // Renders the photos in their real format layout, each one draggable in place.
 // On drop, the photo snaps to whichever slot's measured centre is nearest.
-function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: PhotoVariant; onReorder: (next: number[]) => void }) {
+function DraggablePhotos({
+  ids,
+  format,
+  onReorder,
+  onDragActive,
+}: {
+  ids: number[];
+  format: PhotoVariant;
+  onReorder: (next: number[]) => void;
+  onDragActive?: (active: boolean) => void;
+}) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const pan = useRef(new Animated.ValueXY()).current;
   const positions = useRef<Record<number, { cx: number; cy: number }>>({});
   const refs = useRef<Record<number, { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null>>({});
+  const armed = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const measure = (i: number) => {
     const node = refs.current[i];
@@ -79,45 +91,74 @@ function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: Ph
     });
   };
 
+  const endDrag = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    armed.current = false;
+    setDragIndex(null);
+    onDragActive?.(false);
+    pan.setValue({ x: 0, y: 0 });
+  };
+
   const renderItem: PhotoRenderItem = (content, i, _id, style) => {
     const responder = PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+      // Claim the touch so we can time a long-press; yield back to the ScrollView
+      // (so it can scroll) until the long-press "arms" the drag.
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => !armed.current,
       onPanResponderGrant: () => {
-        setDragIndex(i);
+        armed.current = false;
         pan.setValue({ x: 0, y: 0 });
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => {
+          armed.current = true;
+          setDragIndex(i);
+          onDragActive?.(true); // freeze the page scroll while dragging
+        }, 250);
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: (_, g) => {
-        const me = positions.current[i];
-        if (me) {
-          const tx = me.cx + g.dx;
-          const ty = me.cy + g.dy;
-          let best = i;
-          let bestD = Infinity;
-          ids.forEach((_v, j) => {
-            const pj = positions.current[j];
-            if (!pj) return;
-            const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
-            if (dd < bestD) {
-              bestD = dd;
-              best = j;
+      onPanResponderMove: (_, g) => {
+        if (!armed.current) {
+          // moved before the long-press fired → it's a scroll/tap, cancel the pickup
+          if (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8) {
+            if (timer.current) {
+              clearTimeout(timer.current);
+              timer.current = null;
             }
-          });
-          if (best !== i) {
-            const next = [...ids];
-            const [moved] = next.splice(i, 1);
-            next.splice(best, 0, moved);
-            onReorder(next);
+          }
+          return;
+        }
+        pan.setValue({ x: g.dx, y: g.dy });
+      },
+      onPanResponderRelease: (_, g) => {
+        if (armed.current) {
+          const me = positions.current[i];
+          if (me) {
+            const tx = me.cx + g.dx;
+            const ty = me.cy + g.dy;
+            let best = i;
+            let bestD = Infinity;
+            ids.forEach((_v, j) => {
+              const pj = positions.current[j];
+              if (!pj) return;
+              const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
+              if (dd < bestD) {
+                bestD = dd;
+                best = j;
+              }
+            });
+            if (best !== i) {
+              const next = [...ids];
+              const [moved] = next.splice(i, 1);
+              next.splice(best, 0, moved);
+              onReorder(next);
+            }
           }
         }
-        pan.setValue({ x: 0, y: 0 });
-        setDragIndex(null);
+        endDrag();
       },
-      onPanResponderTerminate: () => {
-        pan.setValue({ x: 0, y: 0 });
-        setDragIndex(null);
-      },
+      onPanResponderTerminate: () => endDrag(),
     });
     const isDrag = dragIndex === i;
     return (
@@ -128,7 +169,7 @@ function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: Ph
         }}
         onLayout={() => measure(i)}
         {...responder.panHandlers}
-        style={[style, isDrag ? { transform: pan.getTranslateTransform(), zIndex: 30, elevation: 16, opacity: 0.95 } : null]}>
+        style={[style, isDrag ? { transform: [...pan.getTranslateTransform(), { scale: 1.06 }], zIndex: 30, elevation: 16, opacity: 0.96 } : null]}>
         {content}
       </Animated.View>
     );
@@ -145,12 +186,14 @@ export function PhotoBlockEditor({
   colors,
   onSave,
   onCancel,
+  onDragActive,
 }: {
   images: number[];
   format: PhotoVariant;
   colors: Colors;
   onSave: (patch: { format: string; count: number; images: number[] }) => void;
   onCancel: () => void;
+  onDragActive?: (active: boolean) => void;
 }) {
   const [draftImages, setDraftImages] = useState<number[]>(images);
   const [draftFormat, setDraftFormat] = useState<PhotoVariant>(format);
@@ -197,8 +240,8 @@ export function PhotoBlockEditor({
 
   return (
     <View>
-      {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag a photo to rearrange</Text> : null}
-      <DraggablePhotos ids={draftImages} format={draftFormat} onReorder={setDraftImages} />
+      {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Press and hold a photo, then drag to rearrange</Text> : null}
+      <DraggablePhotos ids={draftImages} format={draftFormat} onReorder={setDraftImages} onDragActive={onDragActive} />
       <View style={s.fmtRow}>
         {FORMATS.map((f) => {
           const on = draftFormat === f.id;

@@ -161,13 +161,13 @@ function DraggablePhotos({
             }
           });
           if (bestId !== id) {
-            // animate the displaced photos sliding to their new spots
+            // swap the dragged photo with the one it was dropped on: each takes the
+            // other's slot (so both slide past each other), nothing else shifts.
             LayoutAnimation.configureNext({ duration: 260, update: { type: LayoutAnimation.Types.easeInEaseOut } });
             const from = ids.indexOf(id);
             const to = ids.indexOf(bestId);
             const next = [...ids];
-            const [moved] = next.splice(from, 1);
-            next.splice(to, 0, moved);
+            [next[from], next[to]] = [next[to], next[from]];
             onReorder(next);
           }
         }

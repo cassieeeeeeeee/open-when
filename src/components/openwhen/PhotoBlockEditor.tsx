@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { Font } from '@/constants/openwhen';
 
 const FORMATS: { id: PhotoVariant; label: string }[] = [
@@ -20,67 +20,81 @@ const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRAD
 
 type Colors = { onBg: string; onBgDim: string; base: string };
 
-const CELL = 54; // thumbnail (46) + gap (8)
-
-// Horizontal strip of draggable thumbnails (styled per format) — drag to reorder.
-function DraggableImages({ ids, format, onReorder }: { ids: number[]; format: PhotoVariant; onReorder: (next: number[]) => void }) {
+// Renders the photos in their real format layout, each one draggable in place.
+// On drop, the photo snaps to whichever slot's measured centre is nearest — so it
+// works for any layout (scatter, hung line, filmstrip, mosaic) without grid math.
+function DraggablePhotos({ ids, format, onReorder }: { ids: number[]; format: PhotoVariant; onReorder: (next: number[]) => void }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const dx = useRef(new Animated.Value(0)).current;
+  const pan = useRef(new Animated.ValueXY()).current;
+  const positions = useRef<Record<number, { cx: number; cy: number }>>({});
+  const refs = useRef<Record<number, { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null>>({});
 
-  const renderTile = (id: number, i: number) => {
-    const img = <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={d.img} />;
-    if (format === 'filmstrip') return <View style={d.film}>{img}</View>;
-    if (format === 'collage') return <View style={d.collage}>{img}</View>;
-    const tilt = i % 2 ? '4deg' : '-4deg';
+  const measure = (i: number) => {
+    const node = refs.current[i];
+    node?.measureInWindow?.((x, y, w, h) => {
+      positions.current[i] = { cx: x + w / 2, cy: y + h / 2 };
+    });
+  };
+
+  const renderItem: PhotoRenderItem = (content, i, _id, style) => {
+    const responder = PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+      onPanResponderGrant: () => {
+        setDragIndex(i);
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: (_, g) => {
+        const me = positions.current[i];
+        if (me) {
+          const tx = me.cx + g.dx;
+          const ty = me.cy + g.dy;
+          let best = i;
+          let bestD = Infinity;
+          ids.forEach((_v, j) => {
+            const pj = positions.current[j];
+            if (!pj) return;
+            const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
+            if (dd < bestD) {
+              bestD = dd;
+              best = j;
+            }
+          });
+          if (best !== i) {
+            const next = [...ids];
+            const [moved] = next.splice(i, 1);
+            next.splice(best, 0, moved);
+            onReorder(next);
+          }
+        }
+        pan.setValue({ x: 0, y: 0 });
+        setDragIndex(null);
+      },
+      onPanResponderTerminate: () => {
+        pan.setValue({ x: 0, y: 0 });
+        setDragIndex(null);
+      },
+    });
+    const isDrag = dragIndex === i;
     return (
-      <View style={[d.polaroid, { transform: [{ rotate: tilt }] }]}>
-        {format === 'clothesline' ? <View style={d.peg} /> : null}
-        {img}
-      </View>
+      <Animated.View
+        key={i}
+        ref={(el) => {
+          refs.current[i] = el as never;
+        }}
+        onLayout={() => measure(i)}
+        {...responder.panHandlers}
+        style={[style, isDrag ? { transform: pan.getTranslateTransform(), zIndex: 30, elevation: 16, opacity: 0.95 } : null]}>
+        {content}
+      </Animated.View>
     );
   };
 
-  return (
-    <View style={d.strip}>
-      {ids.map((id, i) => {
-        const responder = PanResponder.create({
-          onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) >= Math.abs(g.dy),
-          onPanResponderGrant: () => {
-            setDragIndex(i);
-            dx.setValue(0);
-          },
-          onPanResponderMove: (_, g) => dx.setValue(g.dx),
-          onPanResponderRelease: (_, g) => {
-            const target = Math.max(0, Math.min(ids.length - 1, i + Math.round(g.dx / CELL)));
-            if (target !== i) {
-              const next = [...ids];
-              const [moved] = next.splice(i, 1);
-              next.splice(target, 0, moved);
-              onReorder(next);
-            }
-            setDragIndex(null);
-            dx.setValue(0);
-          },
-          onPanResponderTerminate: () => {
-            setDragIndex(null);
-            dx.setValue(0);
-          },
-        });
-        const isDrag = dragIndex === i;
-        return (
-          <Animated.View
-            key={i}
-            {...responder.panHandlers}
-            style={[d.cell, isDrag && { transform: [{ translateX: dx }], zIndex: 10, elevation: 8, opacity: 0.95 }]}>
-            {renderTile(id, i)}
-          </Animated.View>
-        );
-      })}
-    </View>
-  );
+  return <RevealPhotos images={ids} variant={format} renderItem={renderItem} />;
 }
 
-// Per-photo-item editor: drag to rearrange (in-format), change format, add, select-to-remove.
+// Per-photo-item editor: drag to rearrange in-format, change format, add, select-to-remove.
 export function PhotoBlockEditor({
   images,
   format,
@@ -137,8 +151,8 @@ export function PhotoBlockEditor({
 
   return (
     <View>
-      {images.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag to rearrange</Text> : null}
-      <DraggableImages ids={images} format={format} onReorder={(next) => onChange({ images: next, count: next.length })} />
+      {images.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Drag a photo to rearrange</Text> : null}
+      <DraggablePhotos ids={images} format={format} onReorder={(next) => onChange({ images: next, count: next.length })} />
       <View style={s.fmtRow}>
         {FORMATS.map((f) => {
           const on = format === f.id;
@@ -164,28 +178,8 @@ export function PhotoBlockEditor({
   );
 }
 
-const d = StyleSheet.create({
-  strip: { flexDirection: 'row', gap: 8, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
-  cell: { width: 46 },
-  img: { width: '100%', aspectRatio: 1, borderRadius: 2 },
-  polaroid: {
-    backgroundColor: '#fffdf8',
-    borderRadius: 3,
-    padding: 3,
-    paddingBottom: 9,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  film: { backgroundColor: '#2b2b30', borderRadius: 3, padding: 4 },
-  collage: { borderRadius: 8, overflow: 'hidden' },
-  peg: { position: 'absolute', top: -5, alignSelf: 'center', width: 7, height: 12, borderRadius: 2, backgroundColor: '#c9966a', zIndex: 2 },
-});
-
 const s = StyleSheet.create({
-  dragHint: { fontFamily: Font.medium, fontSize: 11.5, marginTop: 6 },
+  dragHint: { fontFamily: Font.medium, fontSize: 11.5, marginTop: 6, marginBottom: -2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 },
   cellWrap: { width: '22%', aspectRatio: 1 },
   gridImg: { flex: 1, borderRadius: 8 },
@@ -210,7 +204,7 @@ const s = StyleSheet.create({
   cancelText: { fontFamily: Font.semibold, fontSize: 13 },
   removeBtn: { backgroundColor: '#c0504d', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8 },
   removeText: { fontFamily: Font.bold, fontSize: 13, color: '#fff' },
-  fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   fmtChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' },

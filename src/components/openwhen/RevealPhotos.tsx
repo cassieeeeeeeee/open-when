@@ -1,12 +1,25 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { Font } from '@/constants/openwhen';
 
 // Scrapbook-style photo layouts for the capsule reveal. Photos are an ordered list
 // of ids; each id maps to a placeholder gradient (swap for <Image> once Storage is on).
+//
+// Each photo is emitted through `renderItem(content, index, id, positionStyle)`, which
+// by default just wraps it in a positioned <View>. The editor passes a renderItem that
+// wraps each photo in a draggable container — so drag-to-reorder reuses these exact
+// layouts instead of duplicating them.
 
 export type PhotoVariant = 'polaroid' | 'clothesline' | 'filmstrip' | 'collage';
+export type PhotoRenderItem = (content: ReactNode, index: number, id: number, style: StyleProp<ViewStyle>) => ReactNode;
+
+const defaultRender: PhotoRenderItem = (content, index, _id, style) => (
+  <View key={index} style={style}>
+    {content}
+  </View>
+);
 
 const GRADS: [string, string][] = [
   ['#cdb38f', '#8a9b7c'],
@@ -23,17 +36,19 @@ export function RevealPhotos({
   count,
   images,
   variant = 'polaroid',
+  renderItem = defaultRender,
 }: {
   count?: number;
   images?: number[];
   variant?: PhotoVariant;
+  renderItem?: PhotoRenderItem;
 }) {
   const ids = images && images.length ? images : Array.from({ length: Math.max(1, count ?? 4) }, (_, i) => i);
-  if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} />;
-  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 3)} />;
-  if (variant === 'collage') return <Collage ids={ids} />;
+  if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} />;
+  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 3)} renderItem={renderItem} />;
+  if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} />;
   const shown = ids.slice(0, 6);
-  return <Polaroids ids={shown} extra={ids.length - shown.length} />;
+  return <Polaroids ids={shown} extra={ids.length - shown.length} renderItem={renderItem} />;
 }
 
 // ── Polaroids ──────────────────────────────────────────────────────────────────
@@ -41,20 +56,23 @@ const OFFSETS = [0, 18, 6, 22, 2, 16];
 const TAPES = ['rgba(214,182,143,0.7)', 'rgba(154,170,124,0.62)', 'rgba(209,160,160,0.6)', 'rgba(140,165,190,0.6)'];
 const DOODLES = ['♡', '✿', '☀', '✦', '❀', '♪'];
 
-function Polaroids({ ids, extra }: { ids: number[]; extra: number }) {
+function Polaroids({ ids, extra, renderItem }: { ids: number[]; extra: number; renderItem: PhotoRenderItem }) {
   return (
     <View style={p.wrap}>
-      {ids.map((id, i) => (
-        <View key={i} style={[p.slot, { marginTop: OFFSETS[i % OFFSETS.length] }]}>
+      {ids.map((id, i) =>
+        renderItem(
           <View style={[p.card, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
             <View style={[p.tape, { backgroundColor: TAPES[i % TAPES.length] }]} />
             <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={p.photo} />
             <Text style={p.doodle}>{DOODLES[i % DOODLES.length]}</Text>
-          </View>
-        </View>
-      ))}
+          </View>,
+          i,
+          id,
+          [p.slot, { marginTop: OFFSETS[i % OFFSETS.length] }],
+        ),
+      )}
       {extra > 0 ? (
-        <View style={[p.slot, { marginTop: OFFSETS[ids.length % OFFSETS.length] }]}>
+        <View key="more" style={[p.slot, { marginTop: OFFSETS[ids.length % OFFSETS.length] }]}>
           <View style={[p.card, { transform: [{ rotate: '3deg' }] }]}>
             <View style={[p.photo, p.moreInner]}>
               <Text style={p.moreText}>+{extra}</Text>
@@ -71,19 +89,24 @@ function Polaroids({ ids, extra }: { ids: number[]; extra: number }) {
 const HANGS = [12, 26, 8, 22];
 const PEGS = ['#c9966a', '#a8a06a', '#b97f7f', '#7f93b0'];
 
-function Clothesline({ ids }: { ids: number[] }) {
+function Clothesline({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
   return (
     <View style={cl.wrap}>
       <View style={cl.string} />
       <View style={cl.row}>
-        {ids.map((id, i) => (
-          <View key={i} style={[cl.hang, { marginTop: HANGS[i % HANGS.length] }]}>
-            <View style={[cl.peg, { backgroundColor: PEGS[i % PEGS.length] }]} />
-            <View style={[cl.frame, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
-              <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cl.photo} />
-            </View>
-          </View>
-        ))}
+        {ids.map((id, i) =>
+          renderItem(
+            <>
+              <View style={[cl.peg, { backgroundColor: PEGS[i % PEGS.length] }]} />
+              <View style={[cl.frame, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
+                <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cl.photo} />
+              </View>
+            </>,
+            i,
+            id,
+            [cl.hang, { marginTop: HANGS[i % HANGS.length] }],
+          ),
+        )}
       </View>
     </View>
   );
@@ -100,14 +123,19 @@ function Sprockets() {
   );
 }
 
-function Filmstrip({ ids }: { ids: number[] }) {
+function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
   return (
     <View style={fs.strip}>
       <Sprockets />
       <View style={fs.frames}>
-        {ids.map((id, i) => (
-          <LinearGradient key={i} colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frame} />
-        ))}
+        {ids.map((id, i) =>
+          renderItem(
+            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
+            i,
+            id,
+            fs.frame,
+          ),
+        )}
       </View>
       <Sprockets />
     </View>
@@ -115,25 +143,35 @@ function Filmstrip({ ids }: { ids: number[] }) {
 }
 
 // ── Collage ────────────────────────────────────────────────────────────────────
-function Collage({ ids }: { ids: number[] }) {
-  const g = (i: number): [string, string] => grad(ids[i % ids.length]);
+function Collage({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+  const tile = (i: number, style: StyleProp<ViewStyle>, withSticker?: boolean) =>
+    ids[i] === undefined
+      ? null
+      : renderItem(
+          <>
+            <LinearGradient colors={grad(ids[i])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
+            {withSticker ? (
+              <View style={co.sticker}>
+                <Text style={co.stickerText}>♡</Text>
+              </View>
+            ) : null}
+          </>,
+          i,
+          ids[i],
+          style,
+        );
   return (
     <View style={co.wrap}>
       <View style={co.topRow}>
-        <View style={co.big}>
-          <LinearGradient colors={g(0)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
-          <View style={co.sticker}>
-            <Text style={co.stickerText}>♡</Text>
-          </View>
-        </View>
+        {tile(0, co.big, true)}
         <View style={co.rightCol}>
-          <LinearGradient colors={g(1)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
-          <LinearGradient colors={g(2)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
+          {tile(1, co.cell)}
+          {tile(2, co.cell)}
         </View>
       </View>
       <View style={co.botRow}>
-        <LinearGradient colors={g(3)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.wide} />
-        <LinearGradient colors={g(4)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.sq} />
+        {tile(3, co.wide)}
+        {tile(4, co.cell)}
       </View>
     </View>
   );
@@ -196,7 +234,8 @@ const fs = StyleSheet.create({
   holes: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2, marginVertical: 5 },
   hole: { width: 12, height: 9, borderRadius: 2, backgroundColor: '#f4efe4' },
   frames: { flexDirection: 'row', gap: 6 },
-  frame: { flex: 1, aspectRatio: 1, borderRadius: 2 },
+  frame: { flex: 1 },
+  frameImg: { width: '100%', aspectRatio: 1, borderRadius: 2 },
 });
 
 const co = StyleSheet.create({
@@ -204,10 +243,10 @@ const co = StyleSheet.create({
   topRow: { flexDirection: 'row', gap: 6, height: 168 },
   big: { flex: 1.6, borderRadius: 8, overflow: 'hidden' },
   rightCol: { flex: 1, gap: 6 },
-  fill: { flex: 1, borderRadius: 8 },
+  cell: { flex: 1, borderRadius: 8, overflow: 'hidden' },
+  fill: { flex: 1 },
   botRow: { flexDirection: 'row', gap: 6, height: 92 },
-  wide: { flex: 1.5, borderRadius: 8 },
-  sq: { flex: 1, borderRadius: 8 },
+  wide: { flex: 1.5, borderRadius: 8, overflow: 'hidden' },
   sticker: {
     position: 'absolute',
     top: 8,

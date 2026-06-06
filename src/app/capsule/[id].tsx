@@ -1,3 +1,5 @@
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +20,7 @@ import {
   ChevronLeftIcon,
   EnvelopeGlyph,
   HeartIcon,
+  ImageIcon,
   LockIcon,
   PencilIcon,
   PlayIcon,
@@ -64,6 +67,7 @@ export default function CapsuleScreen() {
   const isPreview = preview === '1';
 
   const [themeOverride, setThemeOverride] = useState<string | undefined>(undefined);
+  const [bgOverride, setBgOverride] = useState<string | null | undefined>(undefined);
   const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
   const [photoPicker, setPhotoPicker] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -74,7 +78,12 @@ export default function CapsuleScreen() {
   const themePanelStyle = useAnimatedStyle(() => ({ height: themeMenu.value * themePanelH, opacity: themeMenu.value }));
   const themeChevronStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 - themeMenu.value * 180}deg` }] }));
 
-  const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
+  // A custom background photo (bgOverride: undefined = use the stored one, null = explicitly
+  // cleared, string = a picked photo) wins over the theme gradient. When one is set we force
+  // light text + a dark scrim so the writing stays legible over any photo.
+  const bgImage = bgOverride !== undefined ? bgOverride : capsule?.backgroundImage ?? null;
+  const baseTheme = getCapsuleTheme(themeOverride ?? capsule?.theme);
+  const theme = bgImage ? { ...baseTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const } : baseTheme;
   const contents = contentsDraft ?? capsule?.contents ?? [];
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
@@ -87,6 +96,21 @@ export default function CapsuleScreen() {
   const setThemeMenu = (open: boolean) => {
     setThemeMenuOpen(open);
     themeMenu.value = withTiming(open ? 1 : 0, { duration: 240, easing: Easing.out(Easing.cubic) });
+  };
+  const setBackground = (uri: string | null) => {
+    setBgOverride(uri);
+    if (id) updateCapsule(id, { backgroundImage: uri ?? '' });
+  };
+  const pickBackground = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
+      if (!res.canceled && res.assets?.[0]) {
+        setBackground(res.assets[0].uri);
+        setThemeMenu(false);
+      }
+    } catch {
+      // user dismissed or no library access — leave the background unchanged
+    }
   };
   const saveContents = (next: CapsuleContent[]) => {
     setContentsDraft(next);
@@ -241,9 +265,17 @@ export default function CapsuleScreen() {
   return (
     <View style={[styles.dark, { backgroundColor: theme.colors[0] }]}>
       <StatusBar style={theme.statusBar} />
-      <LinearGradient colors={theme.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
-
-      <ThemeArt art={theme.art} width={width} insetsTop={insets.top} />
+      {bgImage ? (
+        <>
+          <Image source={{ uri: bgImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+        </>
+      ) : (
+        <>
+          <LinearGradient colors={theme.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
+          <ThemeArt art={theme.art} width={width} insetsTop={insets.top} />
+        </>
+      )}
 
       <View style={[styles.barDark, { paddingTop: insets.top + 6 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
@@ -379,6 +411,7 @@ export default function CapsuleScreen() {
                       key={th.id}
                       onPress={() => {
                         pickTheme(th.id);
+                        if (bgImage) setBackground(null);
                         setThemeMenu(false);
                       }}
                       style={styles.themeOption}
@@ -395,6 +428,17 @@ export default function CapsuleScreen() {
                     </Pressable>
                   );
                 })}
+              </View>
+              <View style={styles.bgRow}>
+                <Pressable onPress={pickBackground} style={[styles.bgBtn, { borderColor: theme.onBgDim }]} accessibilityLabel="Upload background photo">
+                  <ImageIcon size={15} color={theme.onBg} />
+                  <Text style={[styles.bgBtnText, { color: theme.onBg }]}>{bgImage ? 'Change photo' : 'Use your own photo'}</Text>
+                </Pressable>
+                {bgImage ? (
+                  <Pressable onPress={() => setBackground(null)} hitSlop={6}>
+                    <Text style={[styles.bgRemove, { color: theme.onBgDim }]}>Remove</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
           </Animated.View>
@@ -509,6 +553,10 @@ const styles = StyleSheet.create({
   custSwatch: { width: 30, height: 30, borderRadius: 9, borderWidth: 2 },
   themeOption: { alignItems: 'center', width: 56 },
   themeName: { fontSize: 10.5, marginTop: 4, textAlign: 'center' },
+  bgRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 },
+  bgBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
+  bgBtnText: { fontFamily: Font.semibold, fontSize: 12 },
+  bgRemove: { fontFamily: Font.semibold, fontSize: 12, textDecorationLine: 'underline' },
   themeTab: { alignItems: 'center', paddingTop: 2 },
   themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
   themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },

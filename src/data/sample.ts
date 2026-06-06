@@ -20,6 +20,7 @@ export type Capsule = {
   recipientEmail?: string; // recipient's email captured at send time
   fromName?: string; // sender's display name (shown as "From" on received capsules)
   theme?: string; // chosen reveal theme id (see constants/capsuleThemes)
+  backgroundImage?: string; // custom uploaded background photo (overrides the theme gradient)
   direction: 'created' | 'received'; // made by the user vs sent to them
   status: 'sealed' | 'unlocked'; // not yet opened vs opened
   contents?: CapsuleContent[]; // what's been added inside

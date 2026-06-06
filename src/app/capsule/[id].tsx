@@ -35,7 +35,7 @@ import {
   TrashIcon,
 } from '@/components/openwhen/icons';
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
-import { FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
+import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
@@ -381,6 +381,20 @@ export default function CapsuleScreen() {
               onCancel={() => setEditingIndex(null)}
               onDragActive={setScrollLocked}
             />
+          ) : isPreview ? (
+            // Outside the editor you can still press-and-hold to rearrange — the new order
+            // saves straight to the item, no need to open edit mode first.
+            <>
+              {imgs.length > 1 ? (
+                <Text style={[styles.dragHintReveal, { color: sec.onBgDim }]}>Press and hold a photo to rearrange</Text>
+              ) : null}
+              <DraggablePhotos
+                ids={imgs}
+                format={fmt}
+                onReorder={(next) => updateItem(index, { images: next })}
+                onDragActive={setScrollLocked}
+              />
+            </>
           ) : (
             <RevealPhotos images={imgs} variant={fmt} />
           )}
@@ -527,6 +541,10 @@ export default function CapsuleScreen() {
               const sec = sectionTheme(i, item);
               const editing = isPreview && editingIndex === i;
               const inheritedName = getCapsuleTheme(i > 0 ? sectionThemeIds[i - 1] : baseThemeId).name;
+              // A faint hairline between sections to make the divisions clear. Tie it to the
+              // section's text polarity (light text → light line, dark text → dark line) so it
+              // stays visible whichever theme is behind it.
+              const dividerColor = sec.statusBar === 'dark' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)';
               return (
                 <View
                   key={i}
@@ -539,6 +557,7 @@ export default function CapsuleScreen() {
                       return next;
                     });
                   }}>
+                  {i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
                   {isPreview ? (
                     <View style={styles.itemBar}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
@@ -660,8 +679,10 @@ const styles = StyleSheet.create({
   letterP: { fontFamily: Font.regular, fontSize: 14, color: '#3a3630', lineHeight: 22, marginBottom: 11 },
   sig: { fontFamily: Font.script, fontSize: 20, color: '#3a3630' },
 
+  divider: { height: 1, marginTop: 16, marginBottom: 2, marginHorizontal: 4, borderRadius: 1 },
   section: { marginTop: 12 },
   sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
+  dragHintReveal: { fontFamily: Font.medium, fontSize: 11, marginTop: -2, marginBottom: 2 },
   sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
   videoTile: { height: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },

@@ -157,8 +157,9 @@ function DraggablePhoto({
 }
 
 // Renders the photos in their real format layout, each one draggable in place. On drop,
-// the photo swaps with whichever slot's measured centre is nearest.
-function DraggablePhotos({
+// the photo swaps with whichever slot's measured centre is nearest. Exported so the reveal
+// can let you rearrange photos in place without first opening the full editor.
+export function DraggablePhotos({
   ids,
   format,
   onReorder,

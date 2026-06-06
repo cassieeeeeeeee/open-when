@@ -1,4 +1,3 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -15,7 +14,6 @@ import {
   VideoIcon,
 } from '@/components/openwhen/icons';
 import { ContentItemRow } from '@/components/openwhen/ui';
-import { CAPSULE_THEMES } from '@/constants/capsuleThemes';
 import { Font, OW, Radius, type Tone, TONES } from '@/constants/openwhen';
 import { type CapsuleContent } from '@/data/sample';
 import { deleteCapsule, updateCapsule, useCapsule } from '@/lib/capsules';
@@ -173,27 +171,6 @@ export default function EditCapsuleScreen() {
                 <Text style={styles.releaseText}>Release capsule now</Text>
               </Pressable>
             ) : null}
-
-            <Text style={styles.label}>Reveal theme</Text>
-            <View style={styles.themesRow}>
-              {CAPSULE_THEMES.map((th) => {
-                const on = (capsule?.theme ?? 'twilight') === th.id;
-                return (
-                  <Pressable
-                    key={th.id}
-                    onPress={() => id && updateCapsule(id, { theme: th.id })}
-                    style={styles.themeWrap}>
-                    <LinearGradient
-                      colors={th.colors}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.themeSwatch, on && styles.themeSwatchOn]}
-                    />
-                    <Text style={[styles.themeName, on && styles.themeNameOn]}>{th.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
 
             <Pressable style={styles.reseal} onPress={() => router.back()}>
               <Text style={styles.resealText}>Reseal capsule</Text>

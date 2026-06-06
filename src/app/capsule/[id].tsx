@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -21,15 +22,22 @@ import {
   SaveIcon,
   SharePlaneIcon,
 } from '@/components/openwhen/icons';
-import { RevealPhotos } from '@/components/openwhen/RevealPhotos';
-import { getCapsuleTheme } from '@/constants/capsuleThemes';
+import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
 import { unlockedDetail } from '@/data/sample';
-import { useCapsule } from '@/lib/capsules';
+import { updateCapsule, useCapsule } from '@/lib/capsules';
 
 const STARS: [number, number][] = [
   [20, 40], [70, 28], [120, 60], [170, 30], [220, 54],
   [265, 36], [40, 100], [150, 90], [250, 104], [95, 130],
+];
+
+const LAYOUTS: { id: PhotoVariant; label: string }[] = [
+  { id: 'polaroid', label: 'Polaroids' },
+  { id: 'clothesline', label: 'Clothesline' },
+  { id: 'filmstrip', label: 'Filmstrip' },
+  { id: 'collage', label: 'Collage' },
 ];
 
 export default function CapsuleScreen() {
@@ -40,9 +48,23 @@ export default function CapsuleScreen() {
 
   const { capsule } = useCapsule(id);
   const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
-  const theme = getCapsuleTheme(capsule?.theme);
   const isPreview = preview === '1';
+
+  // In preview, theme/layout can be changed live (and saved); otherwise they come from the capsule.
+  const [themeOverride, setThemeOverride] = useState<string | undefined>(undefined);
+  const [layoutOverride, setLayoutOverride] = useState<string | undefined>(undefined);
+  const theme = getCapsuleTheme(themeOverride ?? capsule?.theme);
+  const layout = (layoutOverride ?? capsule?.photoLayout ?? 'polaroid') as PhotoVariant;
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
+
+  const pickTheme = (t: string) => {
+    setThemeOverride(t);
+    if (id) updateCapsule(id, { theme: t });
+  };
+  const pickLayout = (l: string) => {
+    setLayoutOverride(l);
+    if (id) updateCapsule(id, { photoLayout: l });
+  };
 
   // ---- Sealed capsule: a simple light placeholder ----
   if (!showReveal) {
@@ -117,7 +139,7 @@ export default function CapsuleScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + 96 }]}
+        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 180 : 96) }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
           <Text style={[styles.whenTitle, { color: theme.onBg }]}>{title}</Text>
@@ -141,7 +163,7 @@ export default function CapsuleScreen() {
         {photoItem ? (
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{photoItem.label}</Text>
-            <RevealPhotos count={parseInt(photoItem.label, 10) || 4} />
+            <RevealPhotos count={parseInt(photoItem.label, 10) || 4} variant={layout} />
           </View>
         ) : null}
 
@@ -173,10 +195,43 @@ export default function CapsuleScreen() {
       </ScrollView>
 
       {isPreview ? (
-        <View style={[styles.previewNote, { paddingBottom: insets.bottom + 12 }]}>
-          <Text style={[styles.previewNoteText, { color: theme.onBgDim }]}>
-            This is how it will open ✨
-          </Text>
+        <View
+          style={[
+            styles.customizer,
+            {
+              paddingBottom: insets.bottom + 12,
+              backgroundColor: theme.statusBar === 'dark' ? 'rgba(8,10,22,0.66)' : 'rgba(255,255,255,0.66)',
+            },
+          ]}>
+          <Text style={[styles.custTitle, { color: theme.onBgDim }]}>Customize the reveal</Text>
+          <View style={styles.custRow}>
+            {CAPSULE_THEMES.map((th) => {
+              const on = (themeOverride ?? capsule?.theme ?? 'twilight') === th.id;
+              return (
+                <Pressable key={th.id} onPress={() => pickTheme(th.id)} hitSlop={4}>
+                  <LinearGradient
+                    colors={th.colors}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.custSwatch, { borderColor: on ? theme.onBg : 'transparent' }]}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.custChips}>
+            {LAYOUTS.map((l) => {
+              const on = layout === l.id;
+              return (
+                <Pressable
+                  key={l.id}
+                  onPress={() => pickLayout(l.id)}
+                  style={[styles.custChip, on ? { backgroundColor: theme.onBg } : { borderColor: theme.onBgDim, borderWidth: 1 }]}>
+                  <Text style={[styles.custChipText, { color: on ? theme.colors[0] : theme.onBg }]}>{l.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
       ) : (
         <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
@@ -242,8 +297,6 @@ const styles = StyleSheet.create({
   section: { marginTop: 18 },
   sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
   sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
-  photoRow: { flexDirection: 'row', gap: 8 },
-  photo: { flex: 1, aspectRatio: 1, borderRadius: 10 },
 
   player: { marginTop: 18 },
   track: { height: 4, borderRadius: 4, overflow: 'hidden' },
@@ -260,8 +313,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  previewNote: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 12 },
-  previewNoteText: { fontFamily: Font.medium, fontSize: 12.5 },
+  customizer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  custTitle: { fontFamily: Font.bold, fontSize: 12.5, textAlign: 'center', marginBottom: 10 },
+  custRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 12 },
+  custSwatch: { width: 30, height: 30, borderRadius: 9, borderWidth: 2 },
+  custChips: { flexDirection: 'row', gap: 8, paddingHorizontal: 4, flexGrow: 1, justifyContent: 'center' },
+  custChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16 },
+  custChipText: { fontFamily: Font.bold, fontSize: 12.5 },
 
   actions: {
     position: 'absolute',

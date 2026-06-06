@@ -12,7 +12,7 @@ import { Font } from '@/constants/openwhen';
 // wraps each photo in a draggable container — so drag-to-reorder reuses these exact
 // layouts instead of duplicating them.
 
-export type PhotoVariant = 'polaroid' | 'clothesline' | 'filmstrip' | 'collage';
+export type PhotoVariant = 'polaroid' | 'clothesline' | 'filmstrip' | 'collage' | 'photobooth';
 export type PhotoRenderItem = (content: ReactNode, index: number, id: number, style: StyleProp<ViewStyle>) => ReactNode;
 
 const defaultRender: PhotoRenderItem = (content, index, _id, style) => (
@@ -47,6 +47,7 @@ export function RevealPhotos({
   if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} />;
   if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 3)} renderItem={renderItem} />;
   if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} />;
+  if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 4)} renderItem={renderItem} />;
   const shown = ids.slice(0, 6);
   return <Polaroids ids={shown} extra={ids.length - shown.length} renderItem={renderItem} />;
 }
@@ -177,6 +178,27 @@ function Collage({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderIt
   );
 }
 
+// ── Photobooth ───────────────────────────────────────────────────────────────────
+// A narrow print of stacked frames, like a photo-booth strip. One column, so the editor's
+// drag-to-reorder slides cleanly within the single strip (no cross-parent moves).
+function Photobooth({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+  return (
+    <View style={pbo.wrap}>
+      <View style={pbo.strip}>
+        {ids.map((id, i) =>
+          renderItem(
+            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pbo.photo} />,
+            i,
+            id,
+            pbo.cell,
+          ),
+        )}
+        <Text style={pbo.caption}>♡</Text>
+      </View>
+    </View>
+  );
+}
+
 const p = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', paddingTop: 10, paddingBottom: 4 },
   slot: { width: '50%', paddingHorizontal: 7, marginBottom: 12, alignItems: 'center' },
@@ -259,4 +281,25 @@ const co = StyleSheet.create({
     justifyContent: 'center',
   },
   stickerText: { fontFamily: Font.script, fontSize: 15, color: '#c07b86' },
+});
+
+const pbo = StyleSheet.create({
+  wrap: { alignItems: 'center', paddingTop: 12, paddingBottom: 6 },
+  strip: {
+    width: '47%',
+    backgroundColor: '#fffdf8',
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingTop: 7,
+    paddingBottom: 4,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 6,
+  },
+  cell: { width: '100%', marginBottom: 6 },
+  photo: { width: '100%', aspectRatio: 1.2, borderRadius: 2 },
+  caption: { fontFamily: Font.script, fontSize: 16, color: '#b88a93', marginTop: 1 },
 });

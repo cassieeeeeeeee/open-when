@@ -12,6 +12,7 @@ const FORMATS: { id: PhotoVariant; label: string }[] = [
   { id: 'clothesline', label: 'Clothesline' },
   { id: 'filmstrip', label: 'Filmstrip' },
   { id: 'collage', label: 'Collage' },
+  { id: 'photobooth', label: 'Photobooth' },
 ];
 
 const GRADS: [string, string][] = [
@@ -52,6 +53,16 @@ function FormatGlyph({ id, color, size = 15 }: { id: PhotoVariant; color: string
         {[6.5, 11, 15.5].map((x) => (
           <Rect key={`b${x}`} x={x} y={16.2} width={2} height={1.6} rx={0.4} fill={color} />
         ))}
+      </Svg>
+    );
+  }
+  if (id === 'photobooth') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Rect x={8} y={3} width={8} height={18} rx={1.4} stroke={color} strokeWidth={sw} fill="none" />
+        <Rect x={9.7} y={4.7} width={4.6} height={3.9} rx={0.6} fill={color} />
+        <Rect x={9.7} y={9.3} width={4.6} height={3.9} rx={0.6} fill={color} />
+        <Rect x={9.7} y={13.9} width={4.6} height={3.9} rx={0.6} fill={color} />
       </Svg>
     );
   }

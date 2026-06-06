@@ -90,9 +90,14 @@ export function PhotoBlockEditor({
           );
         })}
       </View>
-      <Pressable onPress={() => setSelecting(true)} style={s.manageBtn} disabled={count === 0}>
-        <Text style={[s.manageText, { color: colors.onBgDim }]}>Select photos to remove</Text>
-      </Pressable>
+      <View style={s.actionsRow}>
+        <Pressable onPress={() => onChange({ count: count + 1 })} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
+          <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
+        </Pressable>
+        <Pressable onPress={() => setSelecting(true)} disabled={count === 0}>
+          <Text style={[s.manageText, { color: colors.onBgDim }]}>Select to remove</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -125,6 +130,8 @@ const s = StyleSheet.create({
   fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   fmtChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },
-  manageBtn: { marginTop: 12, alignSelf: 'flex-start' },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap' },
+  addImgBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
+  addImgText: { fontFamily: Font.semibold, fontSize: 12 },
   manageText: { fontFamily: Font.semibold, fontSize: 12.5, textDecorationLine: 'underline' },
 });

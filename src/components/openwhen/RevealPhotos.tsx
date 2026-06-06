@@ -3,8 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Font } from '@/constants/openwhen';
 
-// Scrapbook-style photo layouts for the capsule reveal. Placeholder art for now
-// (soft gradients) — swap each LinearGradient for <Image> once Storage is on.
+// Scrapbook-style photo layouts for the capsule reveal. Photos are an ordered list
+// of ids; each id maps to a placeholder gradient (swap for <Image> once Storage is on).
 
 export type PhotoVariant = 'polaroid' | 'clothesline' | 'filmstrip' | 'collage';
 
@@ -17,38 +17,44 @@ const GRADS: [string, string][] = [
   ['#8aa9b0', '#6f8a7c'],
 ];
 const TILTS = ['-5deg', '4deg', '-3deg', '6deg', '-4deg', '3deg'];
-const grad = (i: number) => GRADS[i % GRADS.length];
-const Photo = ({ i, style }: { i: number; style?: object }) => (
-  <LinearGradient colors={grad(i)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style} />
-);
+const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRADS.length) % GRADS.length];
 
-export function RevealPhotos({ count, variant = 'polaroid' }: { count: number; variant?: PhotoVariant }) {
-  const n = Math.max(1, Math.min(count || 4, 6));
-  if (variant === 'clothesline') return <Clothesline n={Math.min(n, 4)} />;
-  if (variant === 'filmstrip') return <Filmstrip n={Math.min(n, 3)} />;
-  if (variant === 'collage') return <Collage />;
-  return <Polaroids n={n} extra={(count || 0) - n} />;
+export function RevealPhotos({
+  count,
+  images,
+  variant = 'polaroid',
+}: {
+  count?: number;
+  images?: number[];
+  variant?: PhotoVariant;
+}) {
+  const ids = images && images.length ? images : Array.from({ length: Math.max(1, count ?? 4) }, (_, i) => i);
+  if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} />;
+  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 3)} />;
+  if (variant === 'collage') return <Collage ids={ids} />;
+  const shown = ids.slice(0, 6);
+  return <Polaroids ids={shown} extra={ids.length - shown.length} />;
 }
 
-// ── Option 1: tilted polaroids with washi tape + doodles ───────────────────────
+// ── Polaroids ──────────────────────────────────────────────────────────────────
 const OFFSETS = [0, 18, 6, 22, 2, 16];
 const TAPES = ['rgba(214,182,143,0.7)', 'rgba(154,170,124,0.62)', 'rgba(209,160,160,0.6)', 'rgba(140,165,190,0.6)'];
 const DOODLES = ['♡', '✿', '☀', '✦', '❀', '♪'];
 
-function Polaroids({ n, extra }: { n: number; extra: number }) {
+function Polaroids({ ids, extra }: { ids: number[]; extra: number }) {
   return (
     <View style={p.wrap}>
-      {Array.from({ length: n }).map((_, i) => (
+      {ids.map((id, i) => (
         <View key={i} style={[p.slot, { marginTop: OFFSETS[i % OFFSETS.length] }]}>
           <View style={[p.card, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
             <View style={[p.tape, { backgroundColor: TAPES[i % TAPES.length] }]} />
-            <Photo i={i} style={p.photo} />
+            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={p.photo} />
             <Text style={p.doodle}>{DOODLES[i % DOODLES.length]}</Text>
           </View>
         </View>
       ))}
       {extra > 0 ? (
-        <View style={[p.slot, { marginTop: OFFSETS[n % OFFSETS.length] }]}>
+        <View style={[p.slot, { marginTop: OFFSETS[ids.length % OFFSETS.length] }]}>
           <View style={[p.card, { transform: [{ rotate: '3deg' }] }]}>
             <View style={[p.photo, p.moreInner]}>
               <Text style={p.moreText}>+{extra}</Text>
@@ -61,20 +67,20 @@ function Polaroids({ n, extra }: { n: number; extra: number }) {
   );
 }
 
-// ── Option 2: photos hung from a string with little pegs ───────────────────────
+// ── Clothesline ────────────────────────────────────────────────────────────────
 const HANGS = [12, 26, 8, 22];
 const PEGS = ['#c9966a', '#a8a06a', '#b97f7f', '#7f93b0'];
 
-function Clothesline({ n }: { n: number }) {
+function Clothesline({ ids }: { ids: number[] }) {
   return (
     <View style={cl.wrap}>
       <View style={cl.string} />
       <View style={cl.row}>
-        {Array.from({ length: n }).map((_, i) => (
+        {ids.map((id, i) => (
           <View key={i} style={[cl.hang, { marginTop: HANGS[i % HANGS.length] }]}>
             <View style={[cl.peg, { backgroundColor: PEGS[i % PEGS.length] }]} />
             <View style={[cl.frame, { transform: [{ rotate: TILTS[i % TILTS.length] }] }]}>
-              <Photo i={i} style={cl.photo} />
+              <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cl.photo} />
             </View>
           </View>
         ))}
@@ -83,7 +89,7 @@ function Clothesline({ n }: { n: number }) {
   );
 }
 
-// ── Option 3: a retro filmstrip with sprocket holes ────────────────────────────
+// ── Filmstrip ──────────────────────────────────────────────────────────────────
 function Sprockets() {
   return (
     <View style={fs.holes}>
@@ -94,13 +100,13 @@ function Sprockets() {
   );
 }
 
-function Filmstrip({ n }: { n: number }) {
+function Filmstrip({ ids }: { ids: number[] }) {
   return (
     <View style={fs.strip}>
       <Sprockets />
       <View style={fs.frames}>
-        {Array.from({ length: n }).map((_, i) => (
-          <Photo key={i} i={i} style={fs.frame} />
+        {ids.map((id, i) => (
+          <LinearGradient key={i} colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frame} />
         ))}
       </View>
       <Sprockets />
@@ -108,25 +114,26 @@ function Filmstrip({ n }: { n: number }) {
   );
 }
 
-// ── Option 4: a magazine-style collage mosaic ──────────────────────────────────
-function Collage() {
+// ── Collage ────────────────────────────────────────────────────────────────────
+function Collage({ ids }: { ids: number[] }) {
+  const g = (i: number): [string, string] => grad(ids[i % ids.length]);
   return (
     <View style={co.wrap}>
       <View style={co.topRow}>
         <View style={co.big}>
-          <Photo i={0} style={co.fill} />
+          <LinearGradient colors={g(0)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
           <View style={co.sticker}>
             <Text style={co.stickerText}>♡</Text>
           </View>
         </View>
         <View style={co.rightCol}>
-          <Photo i={1} style={co.fill} />
-          <Photo i={2} style={co.fill} />
+          <LinearGradient colors={g(1)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
+          <LinearGradient colors={g(2)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
         </View>
       </View>
       <View style={co.botRow}>
-        <Photo i={3} style={co.wide} />
-        <Photo i={4} style={co.sq} />
+        <LinearGradient colors={g(3)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.wide} />
+        <LinearGradient colors={g(4)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.sq} />
       </View>
     </View>
   );

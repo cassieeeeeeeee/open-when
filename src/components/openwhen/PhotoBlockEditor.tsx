@@ -90,10 +90,10 @@ function DraggablePhotos({
   const armed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const measure = (i: number) => {
-    const node = refs.current[i];
+  const measure = (id: number) => {
+    const node = refs.current[id];
     node?.measureInWindow?.((x, y, w, h) => {
-      positions.current[i] = { cx: x + w / 2, cy: y + h / 2 };
+      positions.current[id] = { cx: x + w / 2, cy: y + h / 2 };
     });
   };
 
@@ -117,7 +117,7 @@ function DraggablePhotos({
     });
   };
 
-  const renderItem: PhotoRenderItem = (content, i, id, style) => {
+  const renderItem: PhotoRenderItem = (content, _i, id, style) => {
     const responder = PanResponder.create({
       // Claim the touch so we can time a long-press; yield to the ScrollView (so it
       // can scroll) until the long-press "arms" the drag.
@@ -145,27 +145,29 @@ function DraggablePhotos({
       onPanResponderRelease: (_, g) => {
         clearTimer();
         if (!armed.current) return;
-        const me = positions.current[i];
+        const me = positions.current[id];
         if (me) {
           const tx = me.cx + g.dx;
           const ty = me.cy + g.dy;
-          let best = i;
+          let bestId = id;
           let bestD = Infinity;
-          ids.forEach((_v, j) => {
-            const pj = positions.current[j];
+          ids.forEach((thatId) => {
+            const pj = positions.current[thatId];
             if (!pj) return;
             const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
             if (dd < bestD) {
               bestD = dd;
-              best = j;
+              bestId = thatId;
             }
           });
-          if (best !== i) {
+          if (bestId !== id) {
             // animate the displaced photos sliding to their new spots
             LayoutAnimation.configureNext({ duration: 260, update: { type: LayoutAnimation.Types.easeInEaseOut } });
+            const from = ids.indexOf(id);
+            const to = ids.indexOf(bestId);
             const next = [...ids];
-            const [moved] = next.splice(i, 1);
-            next.splice(best, 0, moved);
+            const [moved] = next.splice(from, 1);
+            next.splice(to, 0, moved);
             onReorder(next);
           }
         }
@@ -182,9 +184,9 @@ function DraggablePhotos({
       <Animated.View
         key={id}
         ref={(el) => {
-          refs.current[i] = el as never;
+          refs.current[id] = el as never;
         }}
-        onLayout={() => measure(i)}
+        onLayout={() => measure(id)}
         {...responder.panHandlers}
         style={[style, isDrag ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }], zIndex: 30, elevation: 16, opacity: 0.97 } : null]}>
         {content}

@@ -3,16 +3,24 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  Extrapolation,
+  interpolate,
+  type SharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -32,7 +40,8 @@ import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
-import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
+import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
+import { type CapsuleTheme, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
 import { type CapsuleContent, unlockedDetail } from '@/data/sample';
 import { updateCapsule, useCapsule } from '@/lib/capsules';
@@ -56,11 +65,125 @@ const ADD_LABELS: Record<CapsuleContent['type'], string> = {
   playlist: 'Playlist',
 };
 
+// How the section backgrounds crossfade as you scroll: a band eases fully in over the last FADE of
+// a screen-height of scroll before its section reaches the top, so the reveal opens on the base
+// theme and slides into each section's theme as you scroll to it. Tune FADE for a slower/faster fade.
+const FADE = 0.55;
+
+type Band = { startY: number; themeId: string; photo?: string };
+
+// One full-screen background layer for a band. Layer 0 (the top of the document) stays opaque as
+// the base; every higher layer fades its opacity in as you scroll past its boundary, crossfading
+// over the band below it (alpha-compositing keeps full coverage — no gap ever shows through).
+function BandLayer({
+  band,
+  index,
+  scrollY,
+  width,
+  insetsTop,
+  screenH,
+}: {
+  band: Band;
+  index: number;
+  scrollY: SharedValue<number>;
+  width: number;
+  insetsTop: number;
+  screenH: number;
+}) {
+  const animStyle = useAnimatedStyle(() => {
+    if (index === 0) return { opacity: 1 };
+    const lo = Math.max(0, band.startY - FADE * screenH);
+    return { opacity: interpolate(scrollY.value, [lo, band.startY], [0, 1], Extrapolation.CLAMP) };
+  });
+  const themeObj = getCapsuleTheme(band.themeId);
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, animStyle]} pointerEvents="none">
+      {band.photo ? (
+        <>
+          <Image source={{ uri: band.photo }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+        </>
+      ) : (
+        <>
+          <LinearGradient colors={themeObj.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
+          <ThemeArt art={themeObj.art} width={width} insetsTop={insetsTop} />
+        </>
+      )}
+    </Animated.View>
+  );
+}
+
+// Per-section appearance controls, shown while a block is being edited: a Theme button that opens
+// the swatch grid (choosing one themes this block and every block below it, until another override)
+// and a Background-photo button. Both write straight to the content item via the callbacks.
+function SectionAppearance({
+  item,
+  sec,
+  inheritedName,
+  onSetTheme,
+  onClearTheme,
+  onPickPhoto,
+  onRemovePhoto,
+}: {
+  item: CapsuleContent;
+  sec: CapsuleTheme;
+  inheritedName: string;
+  onSetTheme: (id: string) => void;
+  onClearTheme: () => void;
+  onPickPhoto: () => void;
+  onRemovePhoto: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.sectionAppear}>
+      <View style={styles.sectionAppearRow}>
+        <Pressable onPress={() => setOpen((v) => !v)} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section theme">
+          <LinearGradient colors={sec.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} />
+          <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Theme</Text>
+        </Pressable>
+        <Pressable
+          onPress={item.backgroundImage ? onRemovePhoto : onPickPhoto}
+          style={[styles.bgBtn, { borderColor: sec.onBgDim }]}
+          accessibilityLabel="Section background photo">
+          <ImageIcon size={14} color={sec.onBg} />
+          <Text style={[styles.bgBtnText, { color: sec.onBg }]}>{item.backgroundImage ? 'Remove photo' : 'Background photo'}</Text>
+        </Pressable>
+      </View>
+      {open ? (
+        <View style={styles.sectionThemeGrid}>
+          <ThemeSwatchGrid
+            selectedId={item.theme}
+            textColor={sec.onBg}
+            onSelect={(themeId) => {
+              onSetTheme(themeId);
+              setOpen(false);
+            }}
+          />
+          {item.theme ? (
+            <Pressable
+              onPress={() => {
+                onClearTheme();
+                setOpen(false);
+              }}
+              hitSlop={6}>
+              <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Use inherited theme ({inheritedName})</Text>
+            </Pressable>
+          ) : (
+            <Text style={[styles.sectionInheritNote, { color: sec.onBgDim }]}>
+              Inheriting “{inheritedName}”. Pick one to theme this section and the ones below it.
+            </Text>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function CapsuleScreen() {
   const { id, preview } = useLocalSearchParams<{ id: string; preview?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: screenH } = useWindowDimensions();
 
   const { capsule } = useCapsule(id);
   const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
@@ -74,17 +197,48 @@ export default function CapsuleScreen() {
   const [scrollLocked, setScrollLocked] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [themePanelH, setThemePanelH] = useState(0);
+  const [blockTops, setBlockTops] = useState<number[]>([]);
   const themeMenu = useSharedValue(0);
   const themePanelStyle = useAnimatedStyle(() => ({ height: themeMenu.value * themePanelH, opacity: themeMenu.value }));
   const themeChevronStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 - themeMenu.value * 180}deg` }] }));
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
 
   // A custom background photo (bgOverride: undefined = use the stored one, null = explicitly
   // cleared, string = a picked photo) wins over the theme gradient. When one is set we force
   // light text + a dark scrim so the writing stays legible over any photo.
   const bgImage = bgOverride !== undefined ? bgOverride : capsule?.backgroundImage ?? null;
-  const baseTheme = getCapsuleTheme(themeOverride ?? capsule?.theme);
+  const baseThemeId = themeOverride ?? capsule?.theme ?? 'twilight';
+  const baseTheme = getCapsuleTheme(baseThemeId);
   const theme = bgImage ? { ...baseTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const } : baseTheme;
   const contents = contentsDraft ?? capsule?.contents ?? [];
+  // Each block's effective theme id: its own `theme` if set, else the nearest block above it,
+  // else the capsule base — so choosing a theme cascades to the blocks below until overridden.
+  const sectionThemeIds = useMemo(() => {
+    const out: string[] = [];
+    let cur = baseThemeId;
+    for (const item of contents) {
+      if (item.theme) cur = item.theme;
+      out.push(cur);
+    }
+    return out;
+  }, [contents, baseThemeId]);
+  // Collapse the header + each section into background "bands": adjacent slots that share the same
+  // theme (and neither uses a photo) merge into one; a section with its own photo stands alone.
+  // Unmeasured sections sit far off-screen (MAX_SAFE_INTEGER) so nothing flashes before layout.
+  const bands = useMemo<Band[]>(() => {
+    const out: Band[] = [];
+    const push = (themeId: string, photo: string | undefined, top: number) => {
+      const prev = out[out.length - 1];
+      if (prev && prev.themeId === themeId && (prev.photo ?? null) === (photo ?? null)) return;
+      out.push({ startY: out.length === 0 ? 0 : top, themeId, photo });
+    };
+    push(baseThemeId, undefined, 0); // the header (title/meta) sits on the base theme
+    contents.forEach((item, i) => push(sectionThemeIds[i], item.backgroundImage, blockTops[i] ?? Number.MAX_SAFE_INTEGER));
+    return out;
+  }, [contents, sectionThemeIds, blockTops, baseThemeId]);
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
   const pickTheme = (t: string) => {
@@ -136,6 +290,36 @@ export default function CapsuleScreen() {
   const updateItem = (index: number, patch: Partial<CapsuleContent>) => {
     saveContents(contents.map((c, k) => (k === index ? { ...c, ...patch } : c)));
   };
+  // Clear a per-section override by deleting the key (so the cascade falls through, and Firestore
+  // — which rejects `undefined` — stays happy).
+  const clearItemTheme = (index: number) => {
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index || c.theme === undefined) return c;
+        const next = { ...c };
+        delete next.theme;
+        return next;
+      }),
+    );
+  };
+  const pickItemBackground = async (index: number) => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
+      if (!res.canceled && res.assets?.[0]) updateItem(index, { backgroundImage: res.assets[0].uri });
+    } catch {
+      // user dismissed or no library access — leave the section background unchanged
+    }
+  };
+  const clearItemBackground = (index: number) => {
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index || c.backgroundImage === undefined) return c;
+        const next = { ...c };
+        delete next.backgroundImage;
+        return next;
+      }),
+    );
+  };
 
   // ---- Sealed capsule ----
   if (!showReveal) {
@@ -171,7 +355,16 @@ export default function CapsuleScreen() {
   const whenLabel = detail?.unlockedOn ?? capsule?.date ?? '';
   const frost = theme.statusBar === 'dark' ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.22)';
 
-  const renderBlock = (item: CapsuleContent, index: number) => {
+  // Resolve a block's effective theme object, forcing the legible white-on-scrim treatment when
+  // the block (or the whole capsule) shows a photo behind it.
+  const sectionTheme = (index: number, item: CapsuleContent): CapsuleTheme => {
+    const base = getCapsuleTheme(sectionThemeIds[index] ?? baseThemeId);
+    return bgImage || item.backgroundImage
+      ? { ...base, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const }
+      : base;
+  };
+
+  const renderBlock = (item: CapsuleContent, index: number, sec: CapsuleTheme) => {
     const editing = isPreview && editingIndex === index;
     const deleteRow = editing ? (
       <Pressable
@@ -192,14 +385,14 @@ export default function CapsuleScreen() {
       const fmt = (item.format ?? 'polaroid') as PhotoVariant;
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>
+          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>
             {imgs.length} {imgs.length === 1 ? 'photo' : 'photos'}
           </Text>
           {editing ? (
             <PhotoBlockEditor
               images={imgs}
               format={fmt}
-              colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
+              colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
               onSave={(patch) => {
                 updateItem(index, patch);
                 setEditingIndex(null);
@@ -217,8 +410,8 @@ export default function CapsuleScreen() {
     if (item.type === 'video') {
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
-          <LinearGradient colors={[theme.colors[1], theme.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.videoTile}>
+          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
+          <LinearGradient colors={[sec.colors[1], sec.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.videoTile}>
             <View style={styles.playBadge}>
               <PlayIcon size={18} color={OW.dark} />
             </View>
@@ -230,8 +423,8 @@ export default function CapsuleScreen() {
     if (item.type === 'playlist') {
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
-          {item.preview ? <Text style={[styles.sectionText, { color: theme.onBgDim }]}>{item.preview}</Text> : null}
+          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
+          {item.preview ? <Text style={[styles.sectionText, { color: sec.onBgDim }]}>{item.preview}</Text> : null}
           {deleteRow}
         </View>
       );
@@ -241,7 +434,7 @@ export default function CapsuleScreen() {
         {editing ? (
           <NoteEditor
             initial={item.preview ?? item.label}
-            colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
+            colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
             onSave={(t) => {
               updateItem(index, { preview: t });
               setEditingIndex(null);
@@ -271,12 +464,26 @@ export default function CapsuleScreen() {
           <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
         </>
       ) : (
-        <>
-          <LinearGradient colors={theme.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
-          <ThemeArt art={theme.art} width={width} insetsTop={insets.top} />
-        </>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {bands.map((band, k) => (
+            <BandLayer
+              key={`${k}-${band.photo ?? band.themeId}`}
+              band={band}
+              index={k}
+              scrollY={scrollY}
+              width={width}
+              insetsTop={insets.top}
+              screenH={screenH}
+            />
+          ))}
+        </View>
       )}
 
+      <LinearGradient
+        colors={[theme.statusBar === 'dark' ? 'rgba(247,242,232,0.55)' : 'rgba(8,10,22,0.5)', 'transparent']}
+        style={[styles.topScrim, { height: insets.top + 54 }]}
+        pointerEvents="none"
+      />
       <View style={[styles.barDark, { paddingTop: insets.top + 6 }]}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <ChevronLeftIcon size={22} color={theme.onBg} />
@@ -285,9 +492,16 @@ export default function CapsuleScreen() {
         <View style={styles.spacer} />
       </View>
 
-      <ScrollView
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         scrollEnabled={!scrollLocked}
-        contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + (isPreview ? 130 : 96) }]}
+        contentContainerStyle={[
+          styles.darkScroll,
+          // Extra room at the bottom when sections are themed, so the last section can scroll up
+          // far enough for its background to finish fading in.
+          { paddingBottom: insets.bottom + (isPreview ? 130 : 96) + (bands.length > 1 ? screenH * 0.4 : 0) },
+        ]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
           <Text style={[styles.whenTitle, { color: theme.onBg }]}>{title}</Text>
@@ -328,28 +542,54 @@ export default function CapsuleScreen() {
           </>
         ) : (
           <>
-            {contents.map((item, i) => (
-              <View key={i}>
-                {isPreview ? (
-                  <View style={styles.itemBar}>
-                    <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
-                      <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
-                        <ChevronDownIcon size={16} color={theme.onBg} />
-                      </View>
-                    </Pressable>
-                    <Pressable onPress={() => moveItem(i, 1)} disabled={i === contents.length - 1} hitSlop={8}>
-                      <View style={{ opacity: i === contents.length - 1 ? 0.3 : 1 }}>
-                        <ChevronDownIcon size={16} color={theme.onBg} />
-                      </View>
-                    </Pressable>
-                    <Pressable onPress={() => setEditingIndex(editingIndex === i ? null : i)} hitSlop={8} accessibilityLabel="Edit item">
-                      <PencilIcon size={16} color={theme.onBg} />
-                    </Pressable>
-                  </View>
-                ) : null}
-                {renderBlock(item, i)}
-              </View>
-            ))}
+            {contents.map((item, i) => {
+              const sec = sectionTheme(i, item);
+              const editing = isPreview && editingIndex === i;
+              const inheritedName = getCapsuleTheme(i > 0 ? sectionThemeIds[i - 1] : baseThemeId).name;
+              return (
+                <View
+                  key={i}
+                  onLayout={(e) => {
+                    const y = e.nativeEvent.layout.y;
+                    setBlockTops((prev) => {
+                      if (prev[i] === y) return prev;
+                      const next = prev.slice();
+                      next[i] = y;
+                      return next;
+                    });
+                  }}>
+                  {isPreview ? (
+                    <View style={styles.itemBar}>
+                      <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
+                        <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
+                          <ChevronDownIcon size={16} color={sec.onBg} />
+                        </View>
+                      </Pressable>
+                      <Pressable onPress={() => moveItem(i, 1)} disabled={i === contents.length - 1} hitSlop={8}>
+                        <View style={{ opacity: i === contents.length - 1 ? 0.3 : 1 }}>
+                          <ChevronDownIcon size={16} color={sec.onBg} />
+                        </View>
+                      </Pressable>
+                      <Pressable onPress={() => setEditingIndex(editingIndex === i ? null : i)} hitSlop={8} accessibilityLabel="Edit item">
+                        <PencilIcon size={16} color={sec.onBg} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  {editing ? (
+                    <SectionAppearance
+                      item={item}
+                      sec={sec}
+                      inheritedName={inheritedName}
+                      onSetTheme={(themeId) => updateItem(i, { theme: themeId })}
+                      onClearTheme={() => clearItemTheme(i)}
+                      onPickPhoto={() => pickItemBackground(i)}
+                      onRemovePhoto={() => clearItemBackground(i)}
+                    />
+                  ) : null}
+                  {renderBlock(item, i, sec)}
+                </View>
+              );
+            })}
 
             {contents.length === 0 ? (
               <Text style={[styles.emptyReveal, { color: theme.onBgDim }]}>
@@ -388,7 +628,7 @@ export default function CapsuleScreen() {
             ) : null}
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {isPreview ? (
         <View
@@ -403,32 +643,15 @@ export default function CapsuleScreen() {
           ]}>
           <Animated.View style={[styles.themePanelClip, themePanelStyle]}>
             <View style={styles.themePanelInner} onLayout={(e) => setThemePanelH(e.nativeEvent.layout.height)}>
-              <View style={styles.custRow}>
-                {CAPSULE_THEMES.map((th) => {
-                  const on = (themeOverride ?? capsule?.theme ?? 'twilight') === th.id;
-                  return (
-                    <Pressable
-                      key={th.id}
-                      onPress={() => {
-                        pickTheme(th.id);
-                        if (bgImage) setBackground(null);
-                        setThemeMenu(false);
-                      }}
-                      style={styles.themeOption}
-                      hitSlop={2}>
-                      <LinearGradient
-                        colors={th.colors}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={[styles.custSwatch, { borderColor: on ? theme.onBg : 'transparent' }]}
-                      />
-                      <Text numberOfLines={1} style={[styles.themeName, { color: theme.onBg, fontFamily: on ? Font.bold : Font.semibold }]}>
-                        {th.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ThemeSwatchGrid
+                selectedId={baseThemeId}
+                textColor={theme.onBg}
+                onSelect={(themeId) => {
+                  pickTheme(themeId);
+                  if (bgImage) setBackground(null);
+                  setThemeMenu(false);
+                }}
+              />
               <View style={styles.bgRow}>
                 <Pressable onPress={pickBackground} style={[styles.bgBtn, { borderColor: theme.onBgDim }]} accessibilityLabel="Upload background photo">
                   <ImageIcon size={15} color={theme.onBg} />
@@ -485,6 +708,7 @@ const styles = StyleSheet.create({
   sealedLock: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
 
   dark: { flex: 1 },
+  topScrim: { position: 'absolute', left: 0, right: 0, top: 0 },
   barDark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 },
   unlockedTag: { fontFamily: Font.bold, fontSize: 14 },
   darkScroll: { paddingHorizontal: 18 },
@@ -557,6 +781,11 @@ const styles = StyleSheet.create({
   bgBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
   bgBtnText: { fontFamily: Font.semibold, fontSize: 12 },
   bgRemove: { fontFamily: Font.semibold, fontSize: 12, textDecorationLine: 'underline' },
+  sectionAppear: { marginTop: 10 },
+  sectionAppearRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10 },
+  itemThemeChip: { width: 16, height: 16, borderRadius: 5, borderWidth: 1.5 },
+  sectionThemeGrid: { marginTop: 12, gap: 8 },
+  sectionInheritNote: { fontFamily: Font.medium, fontSize: 11, textAlign: 'center', marginTop: 2, paddingHorizontal: 10, lineHeight: 15 },
   themeTab: { alignItems: 'center', paddingTop: 2 },
   themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
   themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },

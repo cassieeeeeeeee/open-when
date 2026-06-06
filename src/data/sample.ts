@@ -33,6 +33,8 @@ export type CapsuleContent = {
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
   count?: number; // for photos: how many images
   images?: number[]; // for photos: ordered gradient ids (placeholder image identities)
+  theme?: string; // per-section reveal theme id; cascades to the blocks below until overridden
+  backgroundImage?: string; // per-section background photo (local to this block, does not cascade)
 };
 
 /** All capsules — created by the user (for others) or received (from others). */

@@ -26,7 +26,6 @@ import {
   ChevronLeftIcon,
   EnvelopeGlyph,
   HeartIcon,
-  ImageIcon,
   LockIcon,
   PencilIcon,
   PlayIcon,
@@ -119,19 +118,23 @@ function SectionAppearance({
   item,
   sec,
   inheritedName,
+  photos,
   onSetTheme,
   onClearTheme,
   onSetLayout,
-  onPickPhoto,
+  onSelectPhoto,
+  onAddPhoto,
   onRemovePhoto,
 }: {
   item: CapsuleContent;
   sec: CapsuleTheme;
   inheritedName: string;
+  photos: string[];
   onSetTheme: (id: string) => void;
   onClearTheme: () => void;
   onSetLayout: (format: PhotoVariant) => void;
-  onPickPhoto: () => void;
+  onSelectPhoto: (uri: string) => void;
+  onAddPhoto: () => void;
   onRemovePhoto: () => void;
 }) {
   const [open, setOpen] = useState<'none' | 'theme' | 'layout'>('none');
@@ -141,7 +144,11 @@ function SectionAppearance({
     <View style={styles.sectionAppear}>
       <View style={styles.sectionAppearRow}>
         <Pressable onPress={() => toggle('theme')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section theme">
-          <LinearGradient colors={sec.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} />
+          {item.backgroundImage ? (
+            <Image source={{ uri: item.backgroundImage }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} contentFit="cover" />
+          ) : (
+            <LinearGradient colors={sec.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} />
+          )}
           <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Theme</Text>
         </Pressable>
         {item.type === 'photo' ? (
@@ -150,24 +157,29 @@ function SectionAppearance({
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Layout</Text>
           </Pressable>
         ) : null}
-        <Pressable
-          onPress={item.backgroundImage ? onRemovePhoto : onPickPhoto}
-          style={[styles.bgBtn, { borderColor: sec.onBgDim }]}
-          accessibilityLabel="Section background photo">
-          <ImageIcon size={14} color={sec.onBg} />
-          <Text style={[styles.bgBtnText, { color: sec.onBg }]}>{item.backgroundImage ? 'Remove photo' : 'Background photo'}</Text>
-        </Pressable>
       </View>
       {open === 'theme' ? (
         <View style={styles.sectionThemeGrid}>
-          <ThemeSwatchGrid selectedId={item.theme} textColor={sec.onBg} onSelect={(themeId) => { onSetTheme(themeId); setOpen('none'); }} />
-          {item.theme ? (
+          <ThemeSwatchGrid
+            selectedId={item.backgroundImage ? undefined : item.theme}
+            textColor={sec.onBg}
+            onSelect={(themeId) => { onSetTheme(themeId); setOpen('none'); }}
+            photos={photos}
+            selectedPhoto={item.backgroundImage}
+            onSelectPhoto={(uri) => { onSelectPhoto(uri); setOpen('none'); }}
+            onAddPhoto={onAddPhoto}
+          />
+          {item.backgroundImage ? (
+            <Pressable onPress={() => { onRemovePhoto(); setOpen('none'); }} hitSlop={6}>
+              <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Remove background photo</Text>
+            </Pressable>
+          ) : item.theme ? (
             <Pressable onPress={() => { onClearTheme(); setOpen('none'); }} hitSlop={6}>
               <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Use inherited theme ({inheritedName})</Text>
             </Pressable>
           ) : (
             <Text style={[styles.sectionInheritNote, { color: sec.onBgDim }]}>
-              Inheriting “{inheritedName}”. Pick one to theme this section and the ones below it.
+              Inheriting “{inheritedName}”. Pick a theme for this section and the ones below it, or a photo for just this one.
             </Text>
           )}
         </View>
@@ -204,6 +216,7 @@ export default function CapsuleScreen() {
   const isPreview = preview === '1';
 
   const [contentsDraft, setContentsDraft] = useState<CapsuleContent[] | null>(null);
+  const [libDraft, setLibDraft] = useState<string[] | null>(null);
   const [photoPicker, setPhotoPicker] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [scrollLocked, setScrollLocked] = useState(false);
@@ -220,6 +233,9 @@ export default function CapsuleScreen() {
   const baseTheme = getCapsuleTheme(baseThemeId);
   const theme = bgImage ? { ...baseTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const } : baseTheme;
   const contents = contentsDraft ?? capsule?.contents ?? [];
+  // Photos the user has uploaded for this capsule, offered as background options alongside the
+  // themes in every section's theme menu. Drafted locally (like contents) so sample capsules update.
+  const photoLib = libDraft ?? capsule?.backgroundPhotos ?? [];
   // Each block's effective theme id: its own `theme` if set, else the nearest block above it,
   // else the capsule base — so choosing a theme cascades to the blocks below until overridden.
   const sectionThemeIds = useMemo(() => {
@@ -250,6 +266,10 @@ export default function CapsuleScreen() {
   const saveContents = (next: CapsuleContent[]) => {
     setContentsDraft(next);
     if (id) updateCapsule(id, { contents: next });
+  };
+  const saveLib = (next: string[]) => {
+    setLibDraft(next);
+    if (id) updateCapsule(id, { backgroundPhotos: next });
   };
   const moveItem = (index: number, dir: -1 | 1) => {
     const j = index + dir;
@@ -286,9 +306,34 @@ export default function CapsuleScreen() {
   const pickItemBackground = async (index: number) => {
     try {
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
-      if (!res.canceled && res.assets?.[0]) updateItem(index, { backgroundImage: res.assets[0].uri });
+      if (!res.canceled && res.assets?.[0]) {
+        const uri = res.assets[0].uri;
+        updateItem(index, { backgroundImage: uri });
+        if (!photoLib.includes(uri)) saveLib([...photoLib, uri]); // keep it as a reusable option for this capsule
+      }
     } catch {
       // user dismissed or no library access — leave the section background unchanged
+    }
+  };
+  // Pick one of the capsule's already-saved photos as this section's background.
+  const selectItemPhoto = (index: number, uri: string) => updateItem(index, { backgroundImage: uri });
+  // Set a section's cascading theme. If the section is currently showing a photo, keep that photo as
+  // a saved option for the capsule, then swap this section's background over to the chosen theme.
+  const setItemTheme = (index: number, themeId: string) => {
+    const item = contents[index];
+    if (item?.backgroundImage) {
+      const uri = item.backgroundImage;
+      if (!photoLib.includes(uri)) saveLib([...photoLib, uri]);
+      saveContents(
+        contents.map((c, k) => {
+          if (k !== index) return c;
+          const next = { ...c, theme: themeId };
+          delete next.backgroundImage; // photo → theme swap (Firestore rejects undefined, so strip it)
+          return next;
+        }),
+      );
+    } else {
+      updateItem(index, { theme: themeId });
     }
   };
   const clearItemBackground = (index: number) => {
@@ -558,6 +603,7 @@ export default function CapsuleScreen() {
                     });
                   }}>
                   {i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
+                  {renderBlock(item, i, sec)}
                   {isPreview ? (
                     <View style={styles.itemBar}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
@@ -580,14 +626,15 @@ export default function CapsuleScreen() {
                       item={item}
                       sec={sec}
                       inheritedName={inheritedName}
-                      onSetTheme={(themeId) => updateItem(i, { theme: themeId })}
+                      photos={photoLib}
+                      onSetTheme={(themeId) => setItemTheme(i, themeId)}
                       onClearTheme={() => clearItemTheme(i)}
                       onSetLayout={(fmt) => updateItem(i, { format: fmt })}
-                      onPickPhoto={() => pickItemBackground(i)}
+                      onSelectPhoto={(uri) => selectItemPhoto(i, uri)}
+                      onAddPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}
                     />
                   ) : null}
-                  {renderBlock(item, i, sec)}
                 </View>
               );
             })}

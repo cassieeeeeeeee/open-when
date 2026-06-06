@@ -21,6 +21,7 @@ import {
   SaveIcon,
   SharePlaneIcon,
 } from '@/components/openwhen/icons';
+import { RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
 import { unlockedDetail } from '@/data/sample';
@@ -140,11 +141,7 @@ export default function CapsuleScreen() {
         {photoItem ? (
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{photoItem.label}</Text>
-            <View style={styles.photoRow}>
-              {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={[styles.photo, { backgroundColor: frost }]} />
-              ))}
-            </View>
+            <RevealPhotos count={parseInt(photoItem.label, 10) || 4} />
           </View>
         ) : null}
 

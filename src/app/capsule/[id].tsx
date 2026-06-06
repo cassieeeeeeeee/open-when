@@ -95,7 +95,7 @@ export default function CapsuleScreen() {
     saveContents([...contents, { type, label: ADD_LABELS[type], ...extra }]);
   };
   const addPhoto = (format: PhotoVariant) => {
-    addItem('photo', { format, count: 4 });
+    addItem('photo', { format, count: 4, images: [0, 1, 2, 3] });
     setPhotoPicker(false);
   };
   const removeItem = (index: number) => {
@@ -156,22 +156,22 @@ export default function CapsuleScreen() {
     ) : null;
 
     if (item.type === 'photo') {
-      const cnt = item.count ?? (parseInt(item.label, 10) || 4);
+      const imgs = item.images ?? Array.from({ length: item.count ?? (parseInt(item.label, 10) || 4) }, (_, k) => k);
       const fmt = (item.format ?? 'polaroid') as PhotoVariant;
       return (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>
-            {cnt} {cnt === 1 ? 'photo' : 'photos'}
+            {imgs.length} {imgs.length === 1 ? 'photo' : 'photos'}
           </Text>
           {editing ? (
             <PhotoBlockEditor
-              count={cnt}
+              images={imgs}
               format={fmt}
               colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
               onChange={(patch) => updateItem(index, patch)}
             />
           ) : (
-            <RevealPhotos count={cnt} variant={fmt} />
+            <RevealPhotos images={imgs} variant={fmt} />
           )}
           {deleteRow}
         </View>

@@ -31,6 +31,7 @@ export type CapsuleContent = {
   preview?: string; // short snippet shown when the item is expanded
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
   count?: number; // for photos: how many images
+  images?: number[]; // for photos: ordered gradient ids (placeholder image identities)
 };
 
 /** All capsules — created by the user (for others) or received (from others). */

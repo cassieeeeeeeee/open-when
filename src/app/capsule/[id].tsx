@@ -141,6 +141,20 @@ export default function CapsuleScreen() {
 
   const renderBlock = (item: CapsuleContent, index: number) => {
     const editing = isPreview && editingIndex === index;
+    const deleteRow = editing ? (
+      <Pressable
+        onPress={() => {
+          removeItem(index);
+          setEditingIndex(null);
+        }}
+        style={styles.deleteRow}
+        hitSlop={6}
+        accessibilityLabel="Delete item">
+        <TrashIcon size={14} color="#d98a8a" />
+        <Text style={styles.deleteRowText}>Delete</Text>
+      </Pressable>
+    ) : null;
+
     if (item.type === 'photo') {
       const cnt = item.count ?? (parseInt(item.label, 10) || 4);
       const fmt = (item.format ?? 'polaroid') as PhotoVariant;
@@ -159,6 +173,7 @@ export default function CapsuleScreen() {
           ) : (
             <RevealPhotos count={cnt} variant={fmt} />
           )}
+          {deleteRow}
         </View>
       );
     }
@@ -171,6 +186,7 @@ export default function CapsuleScreen() {
               <PlayIcon size={18} color={OW.dark} />
             </View>
           </LinearGradient>
+          {deleteRow}
         </View>
       );
     }
@@ -179,30 +195,32 @@ export default function CapsuleScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{item.label}</Text>
           {item.preview ? <Text style={[styles.sectionText, { color: theme.onBgDim }]}>{item.preview}</Text> : null}
+          {deleteRow}
         </View>
       );
     }
-    if (editing) {
-      return (
-        <NoteEditor
-          initial={item.preview ?? item.label}
-          colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
-          onSave={(t) => {
-            updateItem(index, { preview: t });
-            setEditingIndex(null);
-          }}
-          onCancel={() => setEditingIndex(null)}
-        />
-      );
-    }
-    const lines = item.preview ? item.preview.split('\n') : [item.label];
     return (
-      <View style={styles.letter}>
-        {lines.map((p, k) => (
-          <Text key={k} style={styles.letterP}>
-            {p}
-          </Text>
-        ))}
+      <View>
+        {editing ? (
+          <NoteEditor
+            initial={item.preview ?? item.label}
+            colors={{ onBg: theme.onBg, onBgDim: theme.onBgDim, base: theme.colors[0] }}
+            onSave={(t) => {
+              updateItem(index, { preview: t });
+              setEditingIndex(null);
+            }}
+            onCancel={() => setEditingIndex(null)}
+          />
+        ) : (
+          <View style={styles.letter}>
+            {(item.preview ? item.preview.split('\n') : [item.label]).map((p, k) => (
+              <Text key={k} style={styles.letterP}>
+                {p}
+              </Text>
+            ))}
+          </View>
+        )}
+        {deleteRow}
       </View>
     );
   };
@@ -283,26 +301,19 @@ export default function CapsuleScreen() {
               <View key={i}>
                 {isPreview ? (
                   <View style={styles.itemBar}>
-                    <Pressable onPress={() => removeItem(i)} hitSlop={8} accessibilityLabel="Remove item">
-                      <TrashIcon size={16} color={theme.onBg} />
+                    <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
+                      <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
+                        <ChevronDownIcon size={16} color={theme.onBg} />
+                      </View>
                     </Pressable>
-                    <View style={styles.itemBarRight}>
-                      <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
-                        <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
-                          <ChevronDownIcon size={16} color={theme.onBg} />
-                        </View>
-                      </Pressable>
-                      <Pressable onPress={() => moveItem(i, 1)} disabled={i === contents.length - 1} hitSlop={8}>
-                        <View style={{ opacity: i === contents.length - 1 ? 0.3 : 1 }}>
-                          <ChevronDownIcon size={16} color={theme.onBg} />
-                        </View>
-                      </Pressable>
-                      {item.type === 'photo' || item.type === 'text' ? (
-                        <Pressable onPress={() => setEditingIndex(editingIndex === i ? null : i)} hitSlop={8} accessibilityLabel="Edit item">
-                          <PencilIcon size={16} color={theme.onBg} />
-                        </Pressable>
-                      ) : null}
-                    </View>
+                    <Pressable onPress={() => moveItem(i, 1)} disabled={i === contents.length - 1} hitSlop={8}>
+                      <View style={{ opacity: i === contents.length - 1 ? 0.3 : 1 }}>
+                        <ChevronDownIcon size={16} color={theme.onBg} />
+                      </View>
+                    </Pressable>
+                    <Pressable onPress={() => setEditingIndex(editingIndex === i ? null : i)} hitSlop={8} accessibilityLabel="Edit item">
+                      <PencilIcon size={16} color={theme.onBg} />
+                    </Pressable>
                   </View>
                 ) : null}
                 {renderBlock(item, i)}
@@ -428,9 +439,10 @@ const styles = StyleSheet.create({
   videoTile: { height: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
 
-  itemBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: -6 },
-  itemBarRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  itemBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 14, marginBottom: -6 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
+  deleteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, alignSelf: 'flex-start' },
+  deleteRowText: { fontFamily: Font.semibold, fontSize: 12.5, color: '#d98a8a' },
   emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
   addWrap: { marginTop: 24 },
   addLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },

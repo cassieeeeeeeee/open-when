@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, LayoutAnimation, PanResponder, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { Line, Rect, Svg } from 'react-native-svg';
 
 import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
@@ -18,6 +18,11 @@ const GRADS: [string, string][] = [
   ['#9b8fd0', '#6f7e62'], ['#e0b98a', '#b08a64'], ['#8aa9b0', '#6f8a7c'],
 ];
 const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRADS.length) % GRADS.length];
+
+// Enable LayoutAnimation on old-architecture Android (no-op elsewhere).
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 type Colors = { onBg: string; onBgDim: string; base: string };
 
@@ -77,8 +82,9 @@ function DraggablePhotos({
   onReorder: (next: number[]) => void;
   onDragActive?: (active: boolean) => void;
 }) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragId, setDragId] = useState<number | null>(null);
   const pan = useRef(new Animated.ValueXY()).current;
+  const lift = useRef(new Animated.Value(0)).current;
   const positions = useRef<Record<number, { cx: number; cy: number }>>({});
   const refs = useRef<Record<number, { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null>>({});
   const armed = useRef(false);
@@ -91,85 +97,96 @@ function DraggablePhotos({
     });
   };
 
-  const endDrag = () => {
+  const clearTimer = () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
-    armed.current = false;
-    setDragIndex(null);
-    onDragActive?.(false);
-    pan.setValue({ x: 0, y: 0 });
   };
 
-  const renderItem: PhotoRenderItem = (content, i, _id, style) => {
+  // Glide the lifted photo back down into its (possibly new) slot; siblings slide
+  // into place via the LayoutAnimation queued just before the reorder.
+  const settle = () => {
+    Animated.parallel([
+      Animated.timing(pan, { toValue: { x: 0, y: 0 }, duration: 260, useNativeDriver: false }),
+      Animated.timing(lift, { toValue: 0, duration: 260, useNativeDriver: false }),
+    ]).start(() => {
+      armed.current = false;
+      setDragId(null);
+      onDragActive?.(false);
+    });
+  };
+
+  const renderItem: PhotoRenderItem = (content, i, id, style) => {
     const responder = PanResponder.create({
-      // Claim the touch so we can time a long-press; yield back to the ScrollView
-      // (so it can scroll) until the long-press "arms" the drag.
+      // Claim the touch so we can time a long-press; yield to the ScrollView (so it
+      // can scroll) until the long-press "arms" the drag.
       onStartShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => !armed.current,
       onPanResponderGrant: () => {
         armed.current = false;
         pan.setValue({ x: 0, y: 0 });
-        if (timer.current) clearTimeout(timer.current);
+        clearTimer();
         timer.current = setTimeout(() => {
           armed.current = true;
-          setDragIndex(i);
+          setDragId(id);
           onDragActive?.(true); // freeze the page scroll while dragging
+          Animated.spring(lift, { toValue: 1, useNativeDriver: false, speed: 20, bounciness: 8 }).start();
         }, 250);
       },
       onPanResponderMove: (_, g) => {
         if (!armed.current) {
           // moved before the long-press fired → it's a scroll/tap, cancel the pickup
-          if (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8) {
-            if (timer.current) {
-              clearTimeout(timer.current);
-              timer.current = null;
-            }
-          }
+          if (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8) clearTimer();
           return;
         }
         pan.setValue({ x: g.dx, y: g.dy });
       },
       onPanResponderRelease: (_, g) => {
-        if (armed.current) {
-          const me = positions.current[i];
-          if (me) {
-            const tx = me.cx + g.dx;
-            const ty = me.cy + g.dy;
-            let best = i;
-            let bestD = Infinity;
-            ids.forEach((_v, j) => {
-              const pj = positions.current[j];
-              if (!pj) return;
-              const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
-              if (dd < bestD) {
-                bestD = dd;
-                best = j;
-              }
-            });
-            if (best !== i) {
-              const next = [...ids];
-              const [moved] = next.splice(i, 1);
-              next.splice(best, 0, moved);
-              onReorder(next);
+        clearTimer();
+        if (!armed.current) return;
+        const me = positions.current[i];
+        if (me) {
+          const tx = me.cx + g.dx;
+          const ty = me.cy + g.dy;
+          let best = i;
+          let bestD = Infinity;
+          ids.forEach((_v, j) => {
+            const pj = positions.current[j];
+            if (!pj) return;
+            const dd = (pj.cx - tx) ** 2 + (pj.cy - ty) ** 2;
+            if (dd < bestD) {
+              bestD = dd;
+              best = j;
             }
+          });
+          if (best !== i) {
+            // animate the displaced photos sliding to their new spots
+            LayoutAnimation.configureNext({ duration: 260, update: { type: LayoutAnimation.Types.easeInEaseOut } });
+            const next = [...ids];
+            const [moved] = next.splice(i, 1);
+            next.splice(best, 0, moved);
+            onReorder(next);
           }
         }
-        endDrag();
+        settle();
       },
-      onPanResponderTerminate: () => endDrag(),
+      onPanResponderTerminate: () => {
+        clearTimer();
+        if (armed.current) settle();
+      },
     });
-    const isDrag = dragIndex === i;
+    const isDrag = dragId === id;
+    const scale = lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
     return (
       <Animated.View
-        key={i}
+        key={id}
         ref={(el) => {
           refs.current[i] = el as never;
         }}
         onLayout={() => measure(i)}
         {...responder.panHandlers}
-        style={[style, isDrag ? { transform: [...pan.getTranslateTransform(), { scale: 1.06 }], zIndex: 30, elevation: 16, opacity: 0.96 } : null]}>
+        style={[style, isDrag ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }], zIndex: 30, elevation: 16, opacity: 0.97 } : null]}>
         {content}
       </Animated.View>
     );

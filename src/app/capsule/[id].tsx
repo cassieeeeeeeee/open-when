@@ -1,7 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -22,9 +21,10 @@ import {
   SaveIcon,
   SharePlaneIcon,
 } from '@/components/openwhen/icons';
-import { CAPSULE_THEMES, getCapsuleTheme } from '@/constants/capsuleThemes';
+import { getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
-import { findCapsule, unlockedDetail } from '@/data/sample';
+import { unlockedDetail } from '@/data/sample';
+import { useCapsule } from '@/lib/capsules';
 
 const STARS: [number, number][] = [
   [20, 40], [70, 28], [120, 60], [170, 30], [220, 54],
@@ -32,18 +32,19 @@ const STARS: [number, number][] = [
 ];
 
 export default function CapsuleScreen() {
-  const { id, theme: themeParam } = useLocalSearchParams<{ id: string; theme?: string }>();
+  const { id, preview } = useLocalSearchParams<{ id: string; preview?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  const detail = id ? unlockedDetail[id] : undefined;
-  const [themeId, setThemeId] = useState<string>(themeParam ?? 'twilight');
-  const theme = getCapsuleTheme(themeId);
+  const { capsule } = useCapsule(id);
+  const detail = id ? unlockedDetail[id] : undefined; // sample rich letter (demo)
+  const theme = getCapsuleTheme(capsule?.theme);
+  const isPreview = preview === '1';
+  const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
-  // ---- Sealed capsule: a simple light placeholder (no mockup design for this) ----
-  if (!detail) {
-    const capsule = id ? findCapsule(id) : undefined;
+  // ---- Sealed capsule: a simple light placeholder ----
+  if (!showReveal) {
     const tone = TONES[capsule?.tone ?? 'pink'];
     return (
       <View style={styles.sealed}>
@@ -62,36 +63,36 @@ export default function CapsuleScreen() {
             </Text>
           ) : null}
           {capsule ? <Text style={styles.sealedSub}>{capsule.date}</Text> : null}
-          {capsule?.status === 'unlocked' ? (
-            <Text style={styles.sealedSub}>Opened — this capsule is locked from edits.</Text>
-          ) : (
-            <View style={styles.sealedLock}>
-              <LockIcon size={15} color={OW.muted} />
-              <Text style={styles.sealedSub}>This capsule is still sealed</Text>
-            </View>
-          )}
+          <View style={styles.sealedLock}>
+            <LockIcon size={15} color={OW.muted} />
+            <Text style={styles.sealedSub}>This capsule is still sealed</Text>
+          </View>
         </View>
       </View>
     );
   }
 
-  // ---- Unlocked capsule: the themeable letter view ----
+  // ---- Unlocked / preview: the themeable reveal ----
+  const title = detail?.title ?? capsule?.title ?? 'A capsule';
+  const fromName = detail?.fromName ?? capsule?.fromName ?? capsule?.who ?? 'Someone';
+  const whenLabel = detail?.unlockedOn ?? capsule?.date ?? '';
+  const textItem = capsule?.contents?.find((c) => c.type === 'text');
+  const paragraphs =
+    detail?.letter ??
+    (textItem?.preview ? textItem.preview.split('\n') : textItem ? [textItem.label] : ['Your message will appear here.']);
+  const photoItem = capsule?.contents?.find((c) => c.type === 'photo');
+  const playlistItem = capsule?.contents?.find((c) => c.type === 'playlist');
+  const audio = detail?.audio;
+  const frost = theme.statusBar === 'dark' ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.22)';
+
   return (
     <View style={[styles.dark, { backgroundColor: theme.colors[0] }]}>
       <StatusBar style={theme.statusBar} />
       <LinearGradient colors={theme.colors} locations={[0, 0.55, 1]} style={StyleSheet.absoluteFill} />
 
       {theme.art === 'mountains' ? (
-        <Svg
-          width={width}
-          height={(width * 90) / 292}
-          viewBox="0 0 292 90"
-          preserveAspectRatio="none"
-          style={[styles.art, { top: insets.top + 250 }]}>
-          <Path
-            d="M0 90 L0 55 L55 22 L110 60 L150 35 L200 68 L250 40 L292 64 L292 90 Z"
-            fill="rgba(0,0,0,0.28)"
-          />
+        <Svg width={width} height={(width * 90) / 292} viewBox="0 0 292 90" preserveAspectRatio="none" style={[styles.art, { top: insets.top + 250 }]}>
+          <Path d="M0 90 L0 55 L55 22 L110 60 L150 35 L200 68 L250 40 L292 64 L292 90 Z" fill="rgba(0,0,0,0.28)" />
         </Svg>
       ) : theme.art === 'stars' ? (
         <Svg width={width} height={width * 0.8} viewBox="0 0 300 240" style={[styles.art, { top: insets.top + 36 }]}>
@@ -110,7 +111,7 @@ export default function CapsuleScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <ChevronLeftIcon size={22} color={theme.onBg} />
         </Pressable>
-        <Text style={[styles.unlockedTag, { color: theme.onBg }]}>Unlocked ✨</Text>
+        <Text style={[styles.unlockedTag, { color: theme.onBg }]}>{isPreview ? 'Preview' : 'Unlocked ✨'}</Text>
         <View style={styles.spacer} />
       </View>
 
@@ -118,74 +119,80 @@ export default function CapsuleScreen() {
         contentContainerStyle={[styles.darkScroll, { paddingBottom: insets.bottom + 96 }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
-          <Text style={[styles.whenTitle, { color: theme.onBg }]}>{detail.title}</Text>
+          <Text style={[styles.whenTitle, { color: theme.onBg }]}>{title}</Text>
           <HeartIcon size={18} color="#f1b6c0" />
         </View>
         <Text style={[styles.darkMeta, { color: theme.onBgDim }]}>
-          From: {detail.fromName}
-          {'\n'}Unlocked: {detail.unlockedOn}
+          From: {fromName}
+          {whenLabel ? `\n${isPreview ? 'Opens' : 'Unlocked'}: ${whenLabel}` : ''}
         </Text>
 
         <View style={styles.letter}>
-          {detail.letter.map((p, i) => (
+          {paragraphs.map((p, i) => (
             <Text key={i} style={styles.letterP}>
               {p}
             </Text>
           ))}
-          <Text style={styles.letterP}>{detail.closing}</Text>
-          <Text style={styles.sig}>{detail.signature}</Text>
+          {detail?.closing ? <Text style={styles.letterP}>{detail.closing}</Text> : null}
+          {detail?.signature ? <Text style={styles.sig}>{detail.signature}</Text> : null}
         </View>
 
-        <View style={styles.player}>
-          <View
-            style={[
-              styles.track,
-              { backgroundColor: theme.statusBar === 'dark' ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.25)' },
-            ]}>
-            <View style={[styles.trackFill, { width: `${detail.audio.progress * 100}%`, backgroundColor: theme.onBg }]} />
+        {photoItem ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{photoItem.label}</Text>
+            <View style={styles.photoRow}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={[styles.photo, { backgroundColor: frost }]} />
+              ))}
+            </View>
           </View>
-          <View style={styles.timeRow}>
-            <Text style={[styles.time, { color: theme.onBgDim }]}>{detail.audio.position}</Text>
-            <Text style={[styles.time, { color: theme.onBgDim }]}>{detail.audio.duration}</Text>
-          </View>
-          <View style={styles.playRow}>
-            <Pressable style={styles.playBtn}>
-              <PlayIcon size={15} color={OW.dark} />
-            </Pressable>
-          </View>
-        </View>
+        ) : null}
 
-        <View style={styles.themePicker}>
-          <Text style={[styles.themeLabel, { color: theme.onBgDim }]}>Theme</Text>
-          <View style={styles.swatchRow}>
-            {CAPSULE_THEMES.map((th) => {
-              const on = themeId === th.id;
-              return (
-                <Pressable key={th.id} onPress={() => setThemeId(th.id)} style={styles.swatchWrap}>
-                  <LinearGradient
-                    colors={th.colors}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.swatch, on && { borderColor: theme.onBg }]}
-                  />
-                  <Text style={[styles.swatchName, { color: on ? theme.onBg : theme.onBgDim }]}>{th.name}</Text>
-                </Pressable>
-              );
-            })}
+        {playlistItem ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.onBgDim }]}>{playlistItem.label}</Text>
+            {playlistItem.preview ? (
+              <Text style={[styles.sectionText, { color: theme.onBgDim }]}>{playlistItem.preview}</Text>
+            ) : null}
           </View>
-        </View>
+        ) : null}
+
+        {audio ? (
+          <View style={styles.player}>
+            <View style={[styles.track, { backgroundColor: frost }]}>
+              <View style={[styles.trackFill, { width: `${audio.progress * 100}%`, backgroundColor: theme.onBg }]} />
+            </View>
+            <View style={styles.timeRow}>
+              <Text style={[styles.time, { color: theme.onBgDim }]}>{audio.position}</Text>
+              <Text style={[styles.time, { color: theme.onBgDim }]}>{audio.duration}</Text>
+            </View>
+            <View style={styles.playRow}>
+              <Pressable style={styles.playBtn}>
+                <PlayIcon size={15} color={OW.dark} />
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
-      <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
-        <Pressable style={styles.action}>
-          <SaveIcon size={20} color={theme.onBg} />
-          <Text style={[styles.actionText, { color: theme.onBgDim }]}>Save</Text>
-        </Pressable>
-        <Pressable style={styles.action}>
-          <SharePlaneIcon size={20} color={theme.onBg} />
-          <Text style={[styles.actionText, { color: theme.onBgDim }]}>Share</Text>
-        </Pressable>
-      </View>
+      {isPreview ? (
+        <View style={[styles.previewNote, { paddingBottom: insets.bottom + 12 }]}>
+          <Text style={[styles.previewNoteText, { color: theme.onBgDim }]}>
+            This is how it will open ✨
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
+          <Pressable style={styles.action}>
+            <SaveIcon size={20} color={theme.onBg} />
+            <Text style={[styles.actionText, { color: theme.onBgDim }]}>Save</Text>
+          </Pressable>
+          <Pressable style={styles.action}>
+            <SharePlaneIcon size={20} color={theme.onBg} />
+            <Text style={[styles.actionText, { color: theme.onBgDim }]}>Share</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -234,6 +241,13 @@ const styles = StyleSheet.create({
   },
   letterP: { fontFamily: Font.regular, fontSize: 14, color: '#3a3630', lineHeight: 22, marginBottom: 11 },
   sig: { fontFamily: Font.script, fontSize: 20, color: '#3a3630' },
+
+  section: { marginTop: 18 },
+  sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
+  sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
+  photoRow: { flexDirection: 'row', gap: 8 },
+  photo: { flex: 1, aspectRatio: 1, borderRadius: 10 },
+
   player: { marginTop: 18 },
   track: { height: 4, borderRadius: 4, overflow: 'hidden' },
   trackFill: { height: '100%', borderRadius: 4 },
@@ -249,12 +263,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  themePicker: { marginTop: 26 },
-  themeLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 10, textAlign: 'center' },
-  swatchRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 14 },
-  swatchWrap: { alignItems: 'center', gap: 6, width: 58 },
-  swatch: { width: 46, height: 46, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
-  swatchName: { fontFamily: Font.medium, fontSize: 11 },
+  previewNote: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 12 },
+  previewNoteText: { fontFamily: Font.medium, fontSize: 12.5 },
 
   actions: {
     position: 'absolute',

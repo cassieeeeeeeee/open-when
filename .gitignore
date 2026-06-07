@@ -47,3 +47,6 @@ HANDOFF.md
 CLAUDE.md
 AGENTS.md
 .claude/
+
+# transient commit-message file used by the assistant
+COMMIT_MSG.txt

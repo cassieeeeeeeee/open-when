@@ -2,14 +2,13 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ReactNode, useRef, useState } from 'react';
-import { type GestureResponderHandlers, PanResponder, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { type GestureResponderHandlers, Modal, PanResponder, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, { Easing, LinearTransition, runOnJS, type SharedValue, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Line, Rect, Svg } from 'react-native-svg';
 
+import { PhotoCropEditor } from '@/components/openwhen/PhotoCropEditor';
 import {
-  aspectTuple,
   FRAME_ASPECT,
-  POLAROID_RATIOS,
   type PhotoRatios,
   type PhotoRenderItem,
   type PhotoUris,
@@ -339,6 +338,7 @@ export function PhotoBlockEditor({
   const [draftRatios, setDraftRatios] = useState<PhotoRatios>(ratios ?? {});
   const [mode, setMode] = useState<'none' | 'remove' | 'replace'>('none');
   const [sel, setSel] = useState<Record<number, boolean>>({});
+  const [cropState, setCropState] = useState<{ uri: string; w: number; h: number; targetId: number | null } | null>(null);
   const selectedCount = Object.values(sel).filter(Boolean).length;
   const isPolaroid = format === 'polaroid';
 
@@ -352,22 +352,30 @@ export function PhotoBlockEditor({
     setMode('none');
   };
 
-  // Upload an image into a frame, cropped (on device) to the frame's aspect — that native cropper is
-  // the "size to fit". `targetId` null adds a new frame; otherwise it replaces an existing one.
-  const pickFor = async (targetId: number | null, ratio: number) => {
+  // Pick a raw photo, then open the in-app crop editor (move/resize + choose a shape) before placing it.
+  // `targetId` null adds a new frame; otherwise it replaces an existing one (carried through cropState).
+  const pickRaw = async (targetId: number | null) => {
     try {
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: aspectTuple(ratio), quality: 0.85 });
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
       if (res.canceled || !res.assets?.[0]) return;
-      const uri = res.assets[0].uri;
-      const id = targetId ?? (draftImages.length ? Math.max(...draftImages) + 1 : 0);
-      if (targetId == null) setDraftImages((prev) => [...prev, id]);
-      setDraftUris((m) => ({ ...m, [String(id)]: uri }));
-      if (isPolaroid) setDraftRatios((m) => ({ ...m, [String(id)]: ratio }));
+      const a = res.assets[0];
+      setCropState({ uri: a.uri, w: a.width ?? 0, h: a.height ?? 0, targetId });
     } catch {
       // dismissed / no library access — leave the draft unchanged
     } finally {
       setMode('none');
     }
+  };
+
+  // The crop editor handed back a cropped uri + chosen frame ratio; place it into the target frame.
+  const applyCrop = (croppedUri: string, ratio: number) => {
+    if (!cropState) return;
+    const { targetId } = cropState;
+    const id = targetId ?? (draftImages.length ? Math.max(...draftImages) + 1 : 0);
+    if (targetId == null) setDraftImages((prev) => [...prev, id]);
+    setDraftUris((m) => ({ ...m, [String(id)]: croppedUri }));
+    if (isPolaroid) setDraftRatios((m) => ({ ...m, [String(id)]: ratio }));
+    setCropState(null);
   };
 
   const save = () => {
@@ -394,7 +402,7 @@ export function PhotoBlockEditor({
                 key={i}
                 accessibilityLabel={replacing ? 'replace-cell' : 'photo-cell'}
                 style={s.cellWrap}
-                onPress={() => (replacing ? pickFor(id, draftRatios[String(id)] ?? FRAME_ASPECT[format]) : setSel((prev) => ({ ...prev, [i]: !prev[i] })))}>
+                onPress={() => (replacing ? pickRaw(id) : setSel((prev) => ({ ...prev, [i]: !prev[i] })))}>
                 {uri ? (
                   <Image source={{ uri }} style={[s.gridImg, on && s.gridImgOn]} contentFit="cover" />
                 ) : (
@@ -423,23 +431,11 @@ export function PhotoBlockEditor({
     <View>
       {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Press and hold a photo, then drag to rearrange</Text> : null}
       <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} uris={draftUris} ratios={draftRatios} />
-      {isPolaroid ? (
-        <View style={s.shapeRow}>
-          <Text style={[s.shapeText, { color: colors.onBgDim, marginRight: 2 }]}>Add a photo:</Text>
-          {POLAROID_RATIOS.map((r) => (
-            <Pressable key={r.label} onPress={() => pickFor(null, r.ratio)} style={[s.shapeChip, { borderColor: colors.onBgDim }]} accessibilityLabel={`Add ${r.label} photo`}>
-              <View style={{ width: 14, height: Math.round(14 / r.ratio), borderWidth: 1.5, borderColor: colors.onBg, borderRadius: 2 }} />
-              <Text style={[s.shapeText, { color: colors.onBg }]}>{r.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : (
-        <View style={s.actionsRow}>
-          <Pressable onPress={() => pickFor(null, FRAME_ASPECT[format])} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
-            <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
-          </Pressable>
-        </View>
-      )}
+      <View style={s.actionsRow}>
+        <Pressable onPress={() => pickRaw(null)} style={[s.addImgBtn, { borderColor: colors.onBgDim }]} accessibilityLabel="Add image">
+          <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
+        </Pressable>
+      </View>
       {draftImages.length ? (
         <View style={s.actionsRow}>
           <Pressable onPress={() => setMode('replace')}>
@@ -458,6 +454,25 @@ export function PhotoBlockEditor({
           <Text style={[s.saveText, { color: colors.base }]}>Save</Text>
         </Pressable>
       </View>
+      {cropState ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setCropState(null)}>
+          <PhotoCropEditor
+            uri={cropState.uri}
+            sourceWidth={cropState.w}
+            sourceHeight={cropState.h}
+            allowShapes={isPolaroid}
+            initialRatio={
+              isPolaroid
+                ? cropState.targetId != null
+                  ? (draftRatios[String(cropState.targetId)] ?? 1)
+                  : 1
+                : FRAME_ASPECT[format]
+            }
+            onCancel={() => setCropState(null)}
+            onDone={applyCrop}
+          />
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -488,9 +503,6 @@ const s = StyleSheet.create({
   cancelText: { fontFamily: Font.semibold, fontSize: 13 },
   removeBtn: { backgroundColor: '#c0504d', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8 },
   removeText: { fontFamily: Font.bold, fontSize: 13, color: '#fff' },
-  shapeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  shapeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
-  shapeText: { fontFamily: Font.semibold, fontSize: 12 },
   fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   fmtChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },

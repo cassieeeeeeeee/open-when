@@ -198,6 +198,7 @@ function StickerPaletteChip({
 function SectionAppearance({
   item,
   sec,
+  overPhoto,
   inheritedName,
   photos,
   onSetTheme,
@@ -216,6 +217,7 @@ function SectionAppearance({
 }: {
   item: CapsuleContent;
   sec: CapsuleTheme;
+  overPhoto: boolean;
   inheritedName: string;
   photos: string[];
   onSetTheme: (id: string) => void;
@@ -239,7 +241,7 @@ function SectionAppearance({
   return (
     <View style={styles.sectionAppear}>
       <View style={styles.sectionAppearRow}>
-        <Pressable onPress={() => toggle('theme')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section theme">
+        <Pressable onPress={() => toggle('theme')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section theme">
           {item.backgroundImage ? (
             <Image source={{ uri: item.backgroundImage }} style={[styles.itemThemeChip, { borderColor: sec.onBg }]} contentFit="cover" />
           ) : (
@@ -248,18 +250,18 @@ function SectionAppearance({
           <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Theme</Text>
         </Pressable>
         {item.type === 'photo' ? (
-          <Pressable onPress={() => toggle('layout')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section layout">
+          <Pressable onPress={() => toggle('layout')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section layout">
             <FormatGlyph id={fmt} color={sec.onBg} size={14} />
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Layout</Text>
           </Pressable>
         ) : null}
         {item.type === 'text' ? (
-          <Pressable onPress={() => toggle('frame')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section frame">
+          <Pressable onPress={() => toggle('frame')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section frame">
             <TextFrameGlyph id={textFrame} accent={sec.colors[0]} />
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Frame</Text>
           </Pressable>
         ) : null}
-        <Pressable onPress={() => toggle('stickers')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section decorations">
+        <Pressable onPress={() => toggle('stickers')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section decorations">
           <StickerGlyph kind="flower" size={15} />
           <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Decor</Text>
         </Pressable>
@@ -299,7 +301,7 @@ function SectionAppearance({
               <Pressable
                 key={f.id}
                 onPress={() => { onSetLayout(f.id); setOpen('none'); }}
-                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }]}>
+                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}>
                 <FormatGlyph id={f.id} color={fg} />
                 <Text style={[styles.layoutChipText, { color: fg }]}>{f.label}</Text>
               </Pressable>
@@ -316,7 +318,7 @@ function SectionAppearance({
               <Pressable
                 key={f.id}
                 onPress={() => { onSetFrame(f.id); setOpen('none'); }}
-                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }]}>
+                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}>
                 <TextFrameGlyph id={f.id} accent={sec.colors[0]} />
                 <Text style={[styles.layoutChipText, { color: fg }]}>{f.label}</Text>
               </Pressable>
@@ -413,6 +415,8 @@ export default function CapsuleScreen() {
     bgImage || topPhoto
       ? { ...topTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const }
       : topTheme;
+  // Whether the bottom "Add to this capsule" area sits over an uploaded photo (capsule-wide bg or the last section's).
+  const addOverPhoto = !!(bgImage || contents[contents.length - 1]?.backgroundImage);
   // Each block's effective theme id: its own `theme` if set, else the nearest block above it,
   // else the capsule base — so choosing a theme cascades to the blocks below until overridden.
   const sectionThemeIds = useMemo(() => {
@@ -832,7 +836,7 @@ export default function CapsuleScreen() {
         <Text style={[styles.unlockedTag, { color: theme.onBg }]}>{isPreview ? (previewing ? 'Preview' : 'Workdesk') : 'Unlocked ✨'}</Text>
         <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
           {isPreview ? (
-            <Pressable onPress={togglePreview} style={[styles.modeToggle, { borderColor: theme.onBgDim }, previewing && { backgroundColor: theme.onBg }]} hitSlop={6} accessibilityLabel={previewing ? 'Back to workdesk' : 'Preview final version'}>
+            <Pressable onPress={togglePreview} style={[styles.modeToggle, { borderColor: theme.onBgDim }, !previewing && !!(bgImage || topPhoto) && styles.onPhotoChip, previewing && { backgroundColor: theme.onBg }]} hitSlop={6} accessibilityLabel={previewing ? 'Back to workdesk' : 'Preview final version'}>
               <Text style={[styles.modeToggleText, { color: previewing ? theme.colors[0] : theme.onBg }]}>{previewing ? 'Workdesk' : 'Preview'}</Text>
             </Pressable>
           ) : null}
@@ -891,6 +895,7 @@ export default function CapsuleScreen() {
           <>
             {contents.map((item, i) => {
               const sec = sectionTheme(i, item);
+              const sectionOverPhoto = !!(bgImage || item.backgroundImage);
               const editing = editable && editingIndex === i;
               const inheritedName = getCapsuleTheme(i > 0 ? sectionThemeIds[i - 1] : baseThemeId).name;
               // A faint hairline between sections to make the divisions clear. Tie it to the
@@ -931,7 +936,7 @@ export default function CapsuleScreen() {
                     />
                   </View>
                   {editable ? (
-                    <View style={styles.itemBar}>
+                    <View style={[styles.itemBar, sectionOverPhoto && styles.itemBarOnPhoto]}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
                         <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
                           <ChevronDownIcon size={16} color={sec.onBg} />
@@ -951,6 +956,7 @@ export default function CapsuleScreen() {
                     <SectionAppearance
                       item={item}
                       sec={sec}
+                      overPhoto={sectionOverPhoto}
                       inheritedName={inheritedName}
                       photos={photoLib}
                       onSetTheme={(themeId) => setItemTheme(i, themeId)}
@@ -987,7 +993,7 @@ export default function CapsuleScreen() {
                     <Pressable
                       key={t.type}
                       onPress={() => (t.type === 'photo' ? setPhotoPicker((v) => !v) : addItem(t.type))}
-                      style={[styles.addChip, { borderColor: theme.onBgDim }, t.type === 'photo' && photoPicker && { backgroundColor: theme.onBg }]}>
+                      style={[styles.addChip, { borderColor: theme.onBgDim }, addOverPhoto && styles.onPhotoChip, t.type === 'photo' && photoPicker && { backgroundColor: theme.onBg }]}>
                       <Text style={[styles.addChipText, { color: t.type === 'photo' && photoPicker ? theme.colors[0] : theme.onBg }]}>
                         + {t.label}
                       </Text>
@@ -999,7 +1005,7 @@ export default function CapsuleScreen() {
                     <Text style={[styles.fmtPickLabel, { color: theme.onBgDim }]}>Choose a format:</Text>
                     <View style={styles.fmtPickChips}>
                       {PHOTO_FORMATS.map((f) => (
-                        <Pressable key={f.id} onPress={() => addPhoto(f.id)} style={[styles.fmtPickChip, { borderColor: theme.onBgDim }]}>
+                        <Pressable key={f.id} onPress={() => addPhoto(f.id)} style={[styles.fmtPickChip, { borderColor: theme.onBgDim }, addOverPhoto && styles.onPhotoChip]}>
                           <Text style={[styles.fmtPickText, { color: theme.onBg }]}>{f.label}</Text>
                         </Pressable>
                       ))}
@@ -1097,6 +1103,9 @@ const styles = StyleSheet.create({
   playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
 
   itemBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 14, marginBottom: -6 },
+  // A dark backdrop so editing chrome stays legible over an uploaded background photo.
+  onPhotoChip: { backgroundColor: 'rgba(0,0,0,0.36)', borderColor: 'rgba(255,255,255,0.6)' },
+  itemBarOnPhoto: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.32)', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 6, gap: 16, marginBottom: 0 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
   deleteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, alignSelf: 'flex-start' },
   deleteRowText: { fontFamily: Font.semibold, fontSize: 12.5, color: '#d98a8a' },

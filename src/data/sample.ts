@@ -54,7 +54,10 @@ export type CapsuleContent = {
   label: string;
   preview?: string; // short snippet shown when the item is expanded
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
-  textFrame?: string; // for text: the card style (letter | note | card | ruled | script | chalkboard)
+  textFrame?: string; // for text: the card style (none | letter | note | card | ruled | script | chalkboard | ...)
+  textFont?: string; // for text: font key (sans | serif | script | hand | bold) overriding the frame default
+  textSize?: number; // for text: body font size overriding the frame default
+  textColor?: string; // for text: body colour overriding the frame default
   count?: number; // for photos: how many images
   images?: number[]; // for photos: ordered gradient ids (placeholder identity + drag identity + decoration)
   photoUris?: Record<string, string>; // for photos: gradient id -> uploaded image uri (missing id = gradient placeholder)

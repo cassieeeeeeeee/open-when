@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, type TextStyle, View } from 'react-native';
 
 import { frameBody, framePlaceholder, TextFrameShell, type TextFrameId } from '@/components/openwhen/TextFrame';
 import { Font } from '@/constants/openwhen';
@@ -7,12 +7,15 @@ import { Font } from '@/constants/openwhen';
 type Colors = { onBg: string; onBgDim: string; base: string };
 
 // Edit a note's text with a local draft, committed only on Save (Cancel reverts). The input sits
-// inside the chosen frame's card, so picking a new frame restyles the editor live.
+// inside the chosen frame's card, so picking a new frame restyles the editor live. `bodyOverride`
+// carries the user's font/size/colour choices so the editor matches the final look.
 export function NoteEditor({
   initial,
   colors,
   frameId,
   accent,
+  bodyOverride,
+  placeholderColor,
   onSave,
   onCancel,
 }: {
@@ -20,6 +23,8 @@ export function NoteEditor({
   colors: Colors;
   frameId: TextFrameId;
   accent: string;
+  bodyOverride?: TextStyle;
+  placeholderColor?: string;
   onSave: (text: string) => void;
   onCancel: () => void;
 }) {
@@ -28,13 +33,13 @@ export function NoteEditor({
     <View>
       <TextFrameShell frameId={frameId} accent={accent}>
         <TextInput
-          style={[frameBody(frameId), s.input]}
+          style={[frameBody(frameId), s.input, bodyOverride]}
           value={text}
           onChangeText={setText}
           multiline
           autoFocus
           placeholder="Write your note…"
-          placeholderTextColor={framePlaceholder(frameId)}
+          placeholderTextColor={placeholderColor ?? framePlaceholder(frameId)}
         />
       </TextFrameShell>
       <View style={s.row}>

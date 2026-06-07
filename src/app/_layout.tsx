@@ -1,4 +1,6 @@
+import { Caveat_700Bold } from '@expo-google-fonts/caveat';
 import { DancingScript_700Bold } from '@expo-google-fonts/dancing-script';
+import { Lora_500Medium } from '@expo-google-fonts/lora';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
@@ -72,6 +74,8 @@ function RootNavigator() {
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     DancingScript_700Bold,
+    Lora_500Medium,
+    Caveat_700Bold,
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,

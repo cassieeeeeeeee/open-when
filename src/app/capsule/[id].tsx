@@ -40,7 +40,7 @@ import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/compo
 import { PhotoCropEditor } from '@/components/openwhen/PhotoCropEditor';
 import { type PhotoRatios, type PhotoUris, type PhotoVariant, RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
-import { TEXT_FRAMES, TextFrame, type TextFrameId, TextFrameGlyph } from '@/components/openwhen/TextFrame';
+import { FONT_CHOICES, fontFamilyFor, SIZE_CHOICES, TEXT_COLORS, TEXT_FRAMES, TextFrame, type TextFrameId, TextFrameGlyph } from '@/components/openwhen/TextFrame';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
 import { type CapsuleTheme, getCapsuleTheme } from '@/constants/capsuleThemes';
@@ -205,6 +205,7 @@ function SectionAppearance({
   onClearTheme,
   onSetLayout,
   onSetFrame,
+  onSetTextStyle,
   onSelectPhoto,
   onAddPhoto,
   onRemovePhoto,
@@ -224,6 +225,7 @@ function SectionAppearance({
   onClearTheme: () => void;
   onSetLayout: (format: PhotoVariant) => void;
   onSetFrame: (id: TextFrameId) => void;
+  onSetTextStyle: (patch: { textFont?: string; textSize?: number; textColor?: string }) => void;
   onSelectPhoto: (uri: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: () => void;
@@ -234,8 +236,8 @@ function SectionAppearance({
   onStickerDragEnd: (kind: StickerKind, x: number, y: number) => void;
   onStickerDragCancel: () => void;
 }) {
-  const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'frame' | 'stickers'>('none');
-  const toggle = (m: 'theme' | 'layout' | 'frame' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
+  const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'frame' | 'text' | 'stickers'>('none');
+  const toggle = (m: 'theme' | 'layout' | 'frame' | 'text' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
   const fmt = (item.format ?? 'polaroid') as PhotoVariant;
   const textFrame = (item.textFrame ?? 'letter') as TextFrameId;
   return (
@@ -259,6 +261,12 @@ function SectionAppearance({
           <Pressable onPress={() => toggle('frame')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section frame">
             <TextFrameGlyph id={textFrame} accent={sec.colors[0]} />
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Frame</Text>
+          </Pressable>
+        ) : null}
+        {item.type === 'text' ? (
+          <Pressable onPress={() => toggle('text')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section text style">
+            <Text style={{ fontFamily: fontFamilyFor(item.textFont) ?? Font.bold, fontSize: 15, color: sec.onBg }}>Aa</Text>
+            <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Text</Text>
           </Pressable>
         ) : null}
         <Pressable onPress={() => toggle('stickers')} style={[styles.bgBtn, { borderColor: sec.onBgDim }, overPhoto && styles.onPhotoChip]} accessibilityLabel="Section decorations">
@@ -324,6 +332,55 @@ function SectionAppearance({
               </Pressable>
             );
           })}
+        </View>
+      ) : null}
+      {open === 'text' ? (
+        <View style={styles.textPanel}>
+          <View style={styles.sectionLayoutMenu}>
+            {FONT_CHOICES.map((f) => {
+              const on = item.textFont === f.key;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => onSetTextStyle({ textFont: f.key })}
+                  style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}>
+                  <Text style={{ fontFamily: f.family, fontSize: 14.5, color: on ? sec.colors[0] : sec.onBg }}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.sectionLayoutMenu}>
+            {SIZE_CHOICES.map((sz) => {
+              const on = item.textSize === sz.size;
+              return (
+                <Pressable
+                  key={sz.label}
+                  onPress={() => onSetTextStyle({ textSize: sz.size })}
+                  style={[styles.sizeChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}>
+                  <Text style={{ fontFamily: Font.semibold, fontSize: sz.size, lineHeight: sz.size + 4, color: on ? sec.colors[0] : sec.onBg }}>{sz.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.swatchRow}>
+            <Pressable
+              onPress={() => onSetTextStyle({ textColor: undefined })}
+              style={[styles.swatch, styles.swatchAuto, { borderColor: item.textColor ? sec.onBgDim : sec.onBg, borderWidth: item.textColor ? 1 : 2 }]}
+              accessibilityLabel="Default text colour">
+              <Text style={{ fontFamily: Font.bold, fontSize: 11, color: sec.onBg }}>A</Text>
+            </Pressable>
+            {TEXT_COLORS.map((c) => (
+              <Pressable
+                key={c}
+                onPress={() => onSetTextStyle({ textColor: c })}
+                style={[styles.swatch, { backgroundColor: c, borderColor: item.textColor === c ? sec.onBg : 'rgba(127,127,127,0.4)', borderWidth: item.textColor === c ? 2.5 : 1 }]}
+                accessibilityLabel={`Text colour ${c}`}
+              />
+            ))}
+          </View>
+          <Pressable onPress={() => onSetTextStyle({ textFont: undefined, textSize: undefined, textColor: undefined })} hitSlop={6} style={styles.textResetRow}>
+            <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Reset text styling</Text>
+          </Pressable>
         </View>
       ) : null}
       {open === 'stickers' ? (
@@ -545,6 +602,19 @@ export default function CapsuleScreen() {
         if (k !== index || c.backgroundImage === undefined) return c;
         const next = { ...c };
         delete next.backgroundImage;
+        return next;
+      }),
+    );
+  };
+  // Apply a text block's font/size/colour overrides; a null value clears that key (Firestore rejects undefined).
+  const setItemTextStyle = (index: number, patch: { textFont?: string; textSize?: number; textColor?: string }) => {
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index) return c;
+        const next: CapsuleContent = { ...c };
+        if ('textFont' in patch) { if (patch.textFont == null) delete next.textFont; else next.textFont = patch.textFont; }
+        if ('textSize' in patch) { if (patch.textSize == null) delete next.textSize; else next.textSize = patch.textSize; }
+        if ('textColor' in patch) { if (patch.textColor == null) delete next.textColor; else next.textColor = patch.textColor; }
         return next;
       }),
     );
@@ -772,14 +842,26 @@ export default function CapsuleScreen() {
         </View>
       );
     }
+    const tFrame = (item.textFrame ?? 'letter') as TextFrameId;
+    const noneFrame = tFrame === 'none';
+    // The user's font/size/colour choices, applied over the frame's defaults. For "No frame" the
+    // text sits on the section background, so its default colour follows the section (sec.onBg).
+    const bodyOverride = {
+      fontFamily: fontFamilyFor(item.textFont),
+      fontSize: item.textSize,
+      lineHeight: item.textSize ? Math.round(item.textSize * 1.5) : undefined,
+      color: item.textColor ?? (noneFrame ? sec.onBg : undefined),
+    };
     return (
       <View>
         {editing ? (
           <NoteEditor
             initial={item.preview ?? item.label}
             colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
-            frameId={(item.textFrame ?? 'letter') as TextFrameId}
+            frameId={tFrame}
             accent={sec.colors[0]}
+            bodyOverride={bodyOverride}
+            placeholderColor={noneFrame ? sec.onBgDim : undefined}
             onSave={(t) => {
               updateItem(index, { preview: t });
               setEditingIndex(null);
@@ -787,11 +869,7 @@ export default function CapsuleScreen() {
             onCancel={() => setEditingIndex(null)}
           />
         ) : (
-          <TextFrame
-            frameId={(item.textFrame ?? 'letter') as TextFrameId}
-            lines={item.preview ? item.preview.split('\n') : [item.label]}
-            accent={sec.colors[0]}
-          />
+          <TextFrame frameId={tFrame} lines={item.preview ? item.preview.split('\n') : [item.label]} accent={sec.colors[0]} bodyOverride={bodyOverride} />
         )}
         {deleteRow}
       </View>
@@ -963,6 +1041,7 @@ export default function CapsuleScreen() {
                       onClearTheme={() => clearItemTheme(i)}
                       onSetLayout={(fmt) => updateItem(i, { format: fmt })}
                       onSetFrame={(frameId) => updateItem(i, { textFrame: frameId })}
+                      onSetTextStyle={(patch) => setItemTextStyle(i, patch)}
                       onSelectPhoto={(uri) => selectItemPhoto(i, uri)}
                       onAddPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}
@@ -1159,6 +1238,12 @@ const styles = StyleSheet.create({
   sectionLayoutMenu: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 },
   layoutChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   layoutChipText: { fontFamily: Font.semibold, fontSize: 12 },
+  textPanel: { marginTop: 4 },
+  sizeChip: { minWidth: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 12 },
+  swatch: { width: 28, height: 28, borderRadius: 14 },
+  swatchAuto: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  textResetRow: { alignItems: 'center', marginTop: 12 },
   stickerStage: { position: 'relative' },
   stickerGhost: { position: 'absolute', width: 48, height: 48, alignItems: 'center', justifyContent: 'center', opacity: 0.92, zIndex: 100 },
   stickerPaletteChip: { alignItems: 'center', width: 54, gap: 3, paddingVertical: 4 },

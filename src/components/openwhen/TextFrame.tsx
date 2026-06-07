@@ -13,6 +13,7 @@ import { Font } from '@/constants/openwhen';
 // and rendered through TextFrameShell, so both the read view (TextFrame) and the editor's
 // TextInput share exactly the same look.
 export type TextFrameId =
+  | 'none'
   | 'letter'
   | 'note'
   | 'card'
@@ -31,6 +32,7 @@ export type TextFrameId =
   | 'rococo';
 
 export const TEXT_FRAMES: { id: TextFrameId; label: string }[] = [
+  { id: 'none', label: 'No frame' },
   { id: 'letter', label: 'Letter' },
   { id: 'script', label: 'Handwritten' },
   { id: 'note', label: 'Sticky note' },
@@ -51,6 +53,31 @@ export const TEXT_FRAMES: { id: TextFrameId; label: string }[] = [
 
 const DEFAULT_ACCENT = '#d98a8a';
 
+// Per-block text overrides the user can pick (font / size / colour), applied on top of any frame.
+export const FONT_CHOICES: { key: string; label: string; family: string }[] = [
+  { key: 'sans', label: 'Sans', family: Font.regular },
+  { key: 'serif', label: 'Serif', family: Font.serif },
+  { key: 'script', label: 'Script', family: Font.script },
+  { key: 'hand', label: 'Casual', family: Font.hand },
+  { key: 'bold', label: 'Bold', family: Font.bold },
+];
+const FONT_BY_KEY: Record<string, string> = {};
+FONT_CHOICES.forEach((f) => {
+  FONT_BY_KEY[f.key] = f.family;
+});
+export function fontFamilyFor(key?: string): string | undefined {
+  return key ? FONT_BY_KEY[key] : undefined;
+}
+
+export const SIZE_CHOICES: { label: string; size: number }[] = [
+  { label: 'S', size: 13 },
+  { label: 'M', size: 15 },
+  { label: 'L', size: 18 },
+  { label: 'XL', size: 22 },
+];
+
+export const TEXT_COLORS = ['#3a3630', '#1b1b1b', '#ffffff', '#9a6a3a', '#b5536a', '#4f6f99', '#5f7a52', '#7a5a86'];
+
 const s = StyleSheet.create({
   // body text styles
   bodySerifless: { fontFamily: Font.regular, fontSize: 14, color: '#3a3630', lineHeight: 22, marginBottom: 11 },
@@ -69,6 +96,7 @@ const s = StyleSheet.create({
   clipShadow: { marginTop: 12, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 10, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
 
   // cards (content padding lives on the pad wrappers below)
+  noneCard: { marginTop: 12 }, // no card — text sits straight on the section background
   letterCard: { backgroundColor: '#f7f2e8', borderRadius: 16, marginTop: 12, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 15, shadowOffset: { width: 0, height: 14 }, elevation: 8 },
   noteCard: { backgroundColor: '#fbe48a', borderRadius: 3, overflow: 'hidden' },
   indexCard: { backgroundColor: '#fffdf9', borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: '#e2dccd', overflow: 'hidden' },
@@ -82,6 +110,7 @@ const s = StyleSheet.create({
   cosmicCard: { borderRadius: 14, marginTop: 12, shadowColor: '#1a1040', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 12 }, elevation: 9 },
 
   // content padding per frame
+  padNone: { paddingVertical: 2 },
   padLetter: { padding: 18 },
   padNote: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 22 },
   padIndex: { paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16 },
@@ -342,6 +371,7 @@ type FrameDef = {
 };
 
 const DEFS: Record<TextFrameId, FrameDef> = {
+  none: { card: s.noneCard, pad: s.padNone, body: s.bodySerifless, placeholder: '#9a9186' },
   letter: { card: s.letterCard, pad: s.padLetter, body: s.bodySerifless, placeholder: '#9a9186' },
   script: { card: s.letterCard, pad: s.padLetter, body: s.bodyScript, placeholder: '#b3a98f' },
   note: { wrapper: s.clipShadow, card: s.noteCard, pad: s.padNote, body: s.noteBody, placeholder: '#b0a25a', decor: () => <View style={s.noteFold} /> },
@@ -387,12 +417,12 @@ export function TextFrameShell({ frameId, accent = DEFAULT_ACCENT, children }: {
   return def.wrapper ? <View style={def.wrapper}>{inner}</View> : inner;
 }
 
-export function TextFrame({ frameId, lines, accent = DEFAULT_ACCENT }: { frameId: TextFrameId; lines: string[]; accent?: string }) {
+export function TextFrame({ frameId, lines, accent = DEFAULT_ACCENT, bodyOverride }: { frameId: TextFrameId; lines: string[]; accent?: string; bodyOverride?: TextStyle }) {
   const body = frameBody(frameId);
   return (
     <TextFrameShell frameId={frameId} accent={accent}>
       {lines.map((p, k) => (
-        <Text key={k} style={body}>
+        <Text key={k} style={[body, bodyOverride]}>
           {p || ' '}
         </Text>
       ))}
@@ -402,6 +432,14 @@ export function TextFrame({ frameId, lines, accent = DEFAULT_ACCENT }: { frameId
 
 // A tiny visual of each frame for the picker chips and the toolbar button.
 export function TextFrameGlyph({ id, accent = DEFAULT_ACCENT }: { id: TextFrameId; accent?: string }) {
+  if (id === 'none') {
+    return (
+      <View style={[g.box, { borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(125,125,125,0.55)', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }]}>
+        <View style={g.noneLine} />
+        <View style={[g.noneLine, { width: 8 }]} />
+      </View>
+    );
+  }
   if (id === 'note') {
     return (
       <View style={[g.box, { backgroundColor: '#fbe48a', borderRadius: 2, overflow: 'hidden' }]}>
@@ -538,6 +576,7 @@ export function TextFrameGlyph({ id, accent = DEFAULT_ACCENT }: { id: TextFrameI
 
 const g = StyleSheet.create({
   box: { width: 20, height: 15, borderRadius: 3 },
+  noneLine: { width: 12, height: 1.5, borderRadius: 1, backgroundColor: 'rgba(90,90,90,0.6)', marginVertical: 1 },
   noteFold: { position: 'absolute', right: -5, bottom: -5, width: 10, height: 10, backgroundColor: '#e7d074', transform: [{ rotate: '45deg' }] },
   cardRule: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
   ruleLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: '#cfe0ef' },

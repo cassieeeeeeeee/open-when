@@ -50,6 +50,8 @@ export const TONES: Record<Tone, { color: string; soft: string }> = {
  */
 export const Font = {
   script: 'DancingScript_700Bold',
+  serif: 'Lora_500Medium',
+  hand: 'Caveat_700Bold',
   regular: 'PlusJakartaSans_400Regular',
   medium: 'PlusJakartaSans_500Medium',
   semibold: 'PlusJakartaSans_600SemiBold',

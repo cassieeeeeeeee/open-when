@@ -192,6 +192,18 @@ function StickerPaletteChip({
   );
 }
 
+// Three little bars aligned left / centre / right — the glyph for the text-alignment chips.
+function AlignGlyph({ dir, color }: { dir: 'left' | 'center' | 'right'; color: string }) {
+  const items = dir === 'left' ? 'flex-start' : dir === 'right' ? 'flex-end' : 'center';
+  return (
+    <View style={{ width: 18, gap: 2.5, alignItems: items }}>
+      <View style={{ height: 2, width: 16, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ height: 2, width: 9, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ height: 2, width: 13, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
 // Per-section appearance controls, shown while a block is being edited: a Theme button (which opens
 // the swatch grid — choosing one themes this block and every block below it, until another override),
 // a Layout button for photo blocks (a menu of photo layouts), and a Background-photo button. Each
@@ -226,7 +238,7 @@ function SectionAppearance({
   onClearTheme: () => void;
   onSetLayout: (format: PhotoVariant) => void;
   onSetFrame: (id: TextFrameId) => void;
-  onSetTextStyle: (patch: { textFont?: string; textSize?: number; textColor?: string }) => void;
+  onSetTextStyle: (patch: { textFont?: string; textSize?: number; textColor?: string; textAlign?: string }) => void;
   onSelectPhoto: (uri: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: () => void;
@@ -350,6 +362,20 @@ function SectionAppearance({
               );
             })}
           </View>
+          <View style={styles.sectionLayoutMenu}>
+            {(['left', 'center', 'right'] as const).map((a) => {
+              const on = (item.textAlign ?? 'left') === a;
+              return (
+                <Pressable
+                  key={a}
+                  onPress={() => onSetTextStyle({ textAlign: a })}
+                  style={[styles.sizeChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}
+                  accessibilityLabel={`Align ${a}`}>
+                  <AlignGlyph dir={a} color={on ? sec.colors[0] : sec.onBg} />
+                </Pressable>
+              );
+            })}
+          </View>
           <SizeWheel value={item.textSize} onChange={(n) => onSetTextStyle({ textSize: n })} color={sec.onBg} />
           <View style={styles.swatchRow}>
             <Pressable
@@ -368,7 +394,7 @@ function SectionAppearance({
             ))}
           </View>
           <ColorSpectrum value={item.textColor} onChange={(hex) => onSetTextStyle({ textColor: hex })} />
-          <Pressable onPress={() => onSetTextStyle({ textFont: undefined, textSize: undefined, textColor: undefined })} hitSlop={6} style={styles.textResetRow}>
+          <Pressable onPress={() => onSetTextStyle({ textFont: undefined, textSize: undefined, textColor: undefined, textAlign: undefined })} hitSlop={6} style={styles.textResetRow}>
             <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Reset text styling</Text>
           </Pressable>
         </View>
@@ -597,7 +623,7 @@ export default function CapsuleScreen() {
     );
   };
   // Apply a text block's font/size/colour overrides; a null value clears that key (Firestore rejects undefined).
-  const setItemTextStyle = (index: number, patch: { textFont?: string; textSize?: number; textColor?: string }) => {
+  const setItemTextStyle = (index: number, patch: { textFont?: string; textSize?: number; textColor?: string; textAlign?: string }) => {
     saveContents(
       contents.map((c, k) => {
         if (k !== index) return c;
@@ -605,6 +631,7 @@ export default function CapsuleScreen() {
         if ('textFont' in patch) { if (patch.textFont == null) delete next.textFont; else next.textFont = patch.textFont; }
         if ('textSize' in patch) { if (patch.textSize == null) delete next.textSize; else next.textSize = patch.textSize; }
         if ('textColor' in patch) { if (patch.textColor == null) delete next.textColor; else next.textColor = patch.textColor; }
+        if ('textAlign' in patch) { if (patch.textAlign == null) delete next.textAlign; else next.textAlign = patch.textAlign; }
         return next;
       }),
     );
@@ -841,6 +868,7 @@ export default function CapsuleScreen() {
       fontSize: item.textSize,
       lineHeight: item.textSize ? Math.round(item.textSize * 1.5) : undefined,
       color: item.textColor ?? (noneFrame ? sec.onBg : undefined),
+      textAlign: item.textAlign as 'left' | 'center' | 'right' | undefined,
     };
     return (
       <View>

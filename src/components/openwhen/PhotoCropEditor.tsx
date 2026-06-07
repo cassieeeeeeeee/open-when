@@ -24,14 +24,16 @@ export function PhotoCropEditor({
   initialRatio,
   onDone,
   onCancel,
+  doneLabel = 'Add photo',
 }: {
   uri: string;
   sourceWidth: number;
   sourceHeight: number;
-  allowShapes: boolean; // polaroid: offer Square/Portrait/Landscape; else the frame is fixed
+  allowShapes: boolean; // polaroid: offer Square/Portrait/Landscape; else the frame is fixed (one ratio)
   initialRatio: number; // frame aspect (width / height) to start with
   onDone: (croppedUri: string, ratio: number) => void;
   onCancel: () => void;
+  doneLabel?: string; // label for the confirm button (e.g. "Add photo" / "Set background")
 }) {
   const { width: screenW, height: screenH } = useWindowDimensions();
   const [ratio, setRatio] = useState(initialRatio);
@@ -43,9 +45,10 @@ export function PhotoCropEditor({
   const sw = natural?.w ?? (sourceWidth > 0 ? sourceWidth : 1000);
   const sh = natural?.h ?? (sourceHeight > 0 ? sourceHeight : 1000);
 
-  // The crop frame, fit within a box that leaves room for the controls.
+  // The crop frame, fit within a box that leaves room for the controls (a touch more when there's
+  // no shape row below it, e.g. setting a background where the frame is a single fixed ratio).
   const maxW = screenW - 48;
-  const maxH = screenH * 0.5;
+  const maxH = screenH * (allowShapes ? 0.5 : 0.6);
   const frameW = ratio >= maxW / maxH ? maxW : maxH * ratio;
   const frameH = frameW / ratio;
 
@@ -180,8 +183,8 @@ export function PhotoCropEditor({
         <Pressable onPress={onCancel} disabled={busy} style={sl.cancelBtn} hitSlop={6}>
           <Text style={sl.cancelText}>Cancel</Text>
         </Pressable>
-        <Pressable onPress={doCrop} disabled={busy} style={sl.doneBtn} hitSlop={6} accessibilityLabel="Add cropped photo">
-          <Text style={sl.doneText}>{busy ? 'Saving…' : 'Add photo'}</Text>
+        <Pressable onPress={doCrop} disabled={busy} style={sl.doneBtn} hitSlop={6} accessibilityLabel={doneLabel}>
+          <Text style={sl.doneText}>{busy ? 'Saving…' : doneLabel}</Text>
         </Pressable>
       </View>
     </View>

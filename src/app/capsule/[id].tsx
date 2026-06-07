@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Modal,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -36,6 +37,7 @@ import {
 } from '@/components/openwhen/icons';
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
+import { PhotoCropEditor } from '@/components/openwhen/PhotoCropEditor';
 import { type PhotoRatios, type PhotoUris, type PhotoVariant, RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
@@ -344,6 +346,7 @@ export default function CapsuleScreen() {
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [stageSizes, setStageSizes] = useState<{ w: number; h: number }[]>([]);
   const [paletteDrag, setPaletteDrag] = useState<{ kind: StickerKind; x: number; y: number } | null>(null);
+  const [bgCropState, setBgCropState] = useState<{ uri: string; w: number; h: number; index: number } | null>(null);
   const paletteRectRef = useRef<Rect | null>(null);
   const paletteViewRef = useRef<View | null>(null);
   const stageRefs = useRef<Record<number, View | null>>({});
@@ -456,15 +459,22 @@ export default function CapsuleScreen() {
   };
   const pickItemBackground = async (index: number) => {
     try {
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
-      if (!res.canceled && res.assets?.[0]) {
-        const uri = res.assets[0].uri;
-        updateItem(index, { backgroundImage: uri });
-        if (!photoLib.includes(uri)) saveLib([...photoLib, uri]); // keep it as a reusable option for this capsule
-      }
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      // Open the in-app crop screen (one fixed full-screen ratio, pan/zoom to frame it) before applying.
+      setBgCropState({ uri: a.uri, w: a.width ?? 0, h: a.height ?? 0, index });
     } catch {
       // user dismissed or no library access — leave the section background unchanged
     }
+  };
+  // The crop screen handed back a framed background; apply it to the section and keep it as a reusable option.
+  const applyBgCrop = (croppedUri: string) => {
+    if (!bgCropState) return;
+    const { index } = bgCropState;
+    updateItem(index, { backgroundImage: croppedUri });
+    if (!photoLib.includes(croppedUri)) saveLib([...photoLib, croppedUri]);
+    setBgCropState(null);
   };
   // Pick one of the capsule's already-saved photos as this section's background.
   const selectItemPhoto = (index: number, uri: string) => updateItem(index, { backgroundImage: uri });
@@ -971,6 +981,23 @@ export default function CapsuleScreen() {
         <View pointerEvents="none" style={[styles.stickerGhost, { left: paletteDrag.x - 24, top: paletteDrag.y - 24 }]}>
           <StickerGlyph kind={paletteDrag.kind} size={48} />
         </View>
+      ) : null}
+
+      {/* Setting a section background opens the same crop screen, but with a single fixed full-screen
+          ratio (no shape options) — the user just pans/zooms to frame the photo behind the reveal. */}
+      {bgCropState ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setBgCropState(null)}>
+          <PhotoCropEditor
+            uri={bgCropState.uri}
+            sourceWidth={bgCropState.w}
+            sourceHeight={bgCropState.h}
+            allowShapes={false}
+            initialRatio={screenH > 0 ? width / screenH : 0.5}
+            doneLabel="Set background"
+            onCancel={() => setBgCropState(null)}
+            onDone={(croppedUri) => applyBgCrop(croppedUri)}
+          />
+        </Modal>
       ) : null}
     </View>
   );

@@ -36,7 +36,7 @@ import {
 } from '@/components/openwhen/icons';
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
-import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import { type PhotoRatios, type PhotoUris, type PhotoVariant, RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
@@ -427,6 +427,21 @@ export default function CapsuleScreen() {
   const updateItem = (index: number, patch: Partial<CapsuleContent>) => {
     saveContents(contents.map((c, k) => (k === index ? { ...c, ...patch } : c)));
   };
+  // Save a photo block's draft. Unlike updateItem's shallow merge, this SETS or DELETES the
+  // photoUris/photoRatios maps so an emptied map is removed rather than left stale (Firestore-safe).
+  const savePhotoBlock = (index: number, patch: { count: number; images: number[]; photoUris?: PhotoUris; photoRatios?: PhotoRatios }) => {
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index) return c;
+        const next: CapsuleContent = { ...c, images: patch.images, count: patch.count };
+        if (patch.photoUris && Object.keys(patch.photoUris).length) next.photoUris = patch.photoUris;
+        else delete next.photoUris;
+        if (patch.photoRatios && Object.keys(patch.photoRatios).length) next.photoRatios = patch.photoRatios;
+        else delete next.photoRatios;
+        return next;
+      }),
+    );
+  };
   // Clear a per-section override by deleting the key (so the cascade falls through, and Firestore
   // — which rejects `undefined` — stays happy).
   const clearItemTheme = (index: number) => {
@@ -637,6 +652,8 @@ export default function CapsuleScreen() {
     if (item.type === 'photo') {
       const imgs = item.images ?? Array.from({ length: item.count ?? (parseInt(item.label, 10) || 4) }, (_, k) => k);
       const fmt = (item.format ?? 'polaroid') as PhotoVariant;
+      const uris = item.photoUris;
+      const ratios = item.photoRatios;
       return (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>
@@ -647,8 +664,10 @@ export default function CapsuleScreen() {
               images={imgs}
               format={fmt}
               colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
+              uris={uris}
+              ratios={ratios}
               onSave={(patch) => {
-                updateItem(index, patch);
+                savePhotoBlock(index, patch);
                 setEditingIndex(null);
               }}
               onCancel={() => setEditingIndex(null)}
@@ -666,10 +685,12 @@ export default function CapsuleScreen() {
                 format={fmt}
                 onReorder={(next) => updateItem(index, { images: next })}
                 onDragActive={setScrollLocked}
+                uris={uris}
+                ratios={ratios}
               />
             </>
           ) : (
-            <RevealPhotos images={imgs} variant={fmt} />
+            <RevealPhotos images={imgs} variant={fmt} uris={uris} ratios={ratios} />
           )}
           {deleteRow}
         </View>

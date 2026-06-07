@@ -55,7 +55,9 @@ export type CapsuleContent = {
   preview?: string; // short snippet shown when the item is expanded
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
   count?: number; // for photos: how many images
-  images?: number[]; // for photos: ordered gradient ids (placeholder image identities)
+  images?: number[]; // for photos: ordered gradient ids (placeholder identity + drag identity + decoration)
+  photoUris?: Record<string, string>; // for photos: gradient id -> uploaded image uri (missing id = gradient placeholder)
+  photoRatios?: Record<string, number>; // for polaroids: gradient id -> chosen frame aspect ratio (missing = 1)
   theme?: string; // per-section reveal theme id; cascades to the blocks below until overridden
   backgroundImage?: string; // per-section background photo (local to this block, does not cascade)
   stickers?: Sticker[]; // free-placed decorations overlaid on this element

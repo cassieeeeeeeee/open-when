@@ -1,10 +1,21 @@
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type ReactNode, useRef, useState } from 'react';
 import { type GestureResponderHandlers, PanResponder, Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, { Easing, LinearTransition, runOnJS, type SharedValue, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Line, Rect, Svg } from 'react-native-svg';
 
-import { RevealPhotos, type PhotoRenderItem, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import {
+  aspectTuple,
+  FRAME_ASPECT,
+  POLAROID_RATIOS,
+  type PhotoRatios,
+  type PhotoRenderItem,
+  type PhotoUris,
+  type PhotoVariant,
+  RevealPhotos,
+} from '@/components/openwhen/RevealPhotos';
 import { Font } from '@/constants/openwhen';
 
 export const FORMATS: { id: PhotoVariant; label: string }[] = [
@@ -164,11 +175,15 @@ export function DraggablePhotos({
   format,
   onReorder,
   onDragActive,
+  uris,
+  ratios,
 }: {
   ids: number[];
   format: PhotoVariant;
   onReorder: (next: number[]) => void;
   onDragActive?: (active: boolean) => void;
+  uris?: PhotoUris;
+  ratios?: PhotoRatios;
 }) {
   const [dragId, setDragId] = useState<number | null>(null);
   const panX = useSharedValue(0);
@@ -295,7 +310,7 @@ export function DraggablePhotos({
     );
   };
 
-  return <RevealPhotos images={ids} variant={format} renderItem={renderItem} />;
+  return <RevealPhotos images={ids} variant={format} renderItem={renderItem} uris={uris} ratios={ratios} />;
 }
 
 // Per-photo-item editor. Edits a local draft (format + ordered images); nothing is
@@ -307,51 +322,98 @@ export function PhotoBlockEditor({
   onSave,
   onCancel,
   onDragActive,
+  uris,
+  ratios,
 }: {
   images: number[];
   format: PhotoVariant;
   colors: Colors;
-  onSave: (patch: { count: number; images: number[] }) => void;
+  onSave: (patch: { count: number; images: number[]; photoUris?: PhotoUris; photoRatios?: PhotoRatios }) => void;
   onCancel: () => void;
   onDragActive?: (active: boolean) => void;
+  uris?: PhotoUris;
+  ratios?: PhotoRatios;
 }) {
   const [draftImages, setDraftImages] = useState<number[]>(images);
-  const [selecting, setSelecting] = useState(false);
+  const [draftUris, setDraftUris] = useState<PhotoUris>(uris ?? {});
+  const [draftRatios, setDraftRatios] = useState<PhotoRatios>(ratios ?? {});
+  const [mode, setMode] = useState<'none' | 'remove' | 'replace'>('none');
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const selectedCount = Object.values(sel).filter(Boolean).length;
+  const isPolaroid = format === 'polaroid';
 
   const removeSelected = () => {
     if (!selectedCount) return;
+    const removed = draftImages.filter((_, i) => sel[i]).map((id) => String(id));
     setDraftImages(draftImages.filter((_, i) => !sel[i]));
+    setDraftUris((m) => { const n = { ...m }; removed.forEach((k) => delete n[k]); return n; });
+    setDraftRatios((m) => { const n = { ...m }; removed.forEach((k) => delete n[k]); return n; });
     setSel({});
-    setSelecting(false);
-  };
-  const addImage = () => {
-    const nextId = draftImages.length ? Math.max(...draftImages) + 1 : 0;
-    setDraftImages([...draftImages, nextId]);
+    setMode('none');
   };
 
-  if (selecting) {
+  // Upload an image into a frame, cropped (on device) to the frame's aspect — that native cropper is
+  // the "size to fit". `targetId` null adds a new frame; otherwise it replaces an existing one.
+  const pickFor = async (targetId: number | null, ratio: number) => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: aspectTuple(ratio), quality: 0.85 });
+      if (res.canceled || !res.assets?.[0]) return;
+      const uri = res.assets[0].uri;
+      const id = targetId ?? (draftImages.length ? Math.max(...draftImages) + 1 : 0);
+      if (targetId == null) setDraftImages((prev) => [...prev, id]);
+      setDraftUris((m) => ({ ...m, [String(id)]: uri }));
+      if (isPolaroid) setDraftRatios((m) => ({ ...m, [String(id)]: ratio }));
+    } catch {
+      // dismissed / no library access — leave the draft unchanged
+    } finally {
+      setMode('none');
+    }
+  };
+
+  const save = () => {
+    const patch: { count: number; images: number[]; photoUris?: PhotoUris; photoRatios?: PhotoRatios } = {
+      images: draftImages,
+      count: draftImages.length,
+    };
+    if (Object.keys(draftUris).length) patch.photoUris = draftUris;
+    if (Object.keys(draftRatios).length) patch.photoRatios = draftRatios;
+    onSave(patch);
+  };
+
+  if (mode !== 'none') {
+    const replacing = mode === 'replace';
     return (
       <View>
+        <Text style={[s.dragHint, { color: colors.onBgDim }]}>{replacing ? 'Tap a photo to replace it' : 'Tap photos, then Remove'}</Text>
         <View style={s.grid}>
           {draftImages.map((id, i) => {
             const on = !!sel[i];
+            const uri = draftUris[String(id)];
             return (
-              <Pressable key={i} accessibilityLabel="photo-cell" style={s.cellWrap} onPress={() => setSel((prev) => ({ ...prev, [i]: !prev[i] }))}>
-                <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.gridImg, on && s.gridImgOn]} />
-                <View style={[s.check, on && s.checkOn]}>{on ? <Text style={s.checkMark}>✓</Text> : null}</View>
+              <Pressable
+                key={i}
+                accessibilityLabel={replacing ? 'replace-cell' : 'photo-cell'}
+                style={s.cellWrap}
+                onPress={() => (replacing ? pickFor(id, draftRatios[String(id)] ?? FRAME_ASPECT[format]) : setSel((prev) => ({ ...prev, [i]: !prev[i] })))}>
+                {uri ? (
+                  <Image source={{ uri }} style={[s.gridImg, on && s.gridImgOn]} contentFit="cover" />
+                ) : (
+                  <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.gridImg, on && s.gridImgOn]} />
+                )}
+                {replacing ? null : <View style={[s.check, on && s.checkOn]}>{on ? <Text style={s.checkMark}>✓</Text> : null}</View>}
               </Pressable>
             );
           })}
         </View>
         <View style={s.bar}>
-          <Pressable onPress={() => { setSel({}); setSelecting(false); }} style={s.cancelBtn}>
-            <Text style={[s.cancelText, { color: colors.onBgDim }]}>Cancel</Text>
+          <Pressable onPress={() => { setSel({}); setMode('none'); }} style={s.cancelBtn}>
+            <Text style={[s.cancelText, { color: colors.onBgDim }]}>{replacing ? 'Done' : 'Cancel'}</Text>
           </Pressable>
-          <Pressable onPress={removeSelected} disabled={!selectedCount} style={[s.removeBtn, !selectedCount && { opacity: 0.4 }]}>
-            <Text style={s.removeText}>Remove{selectedCount ? ` (${selectedCount})` : ''}</Text>
-          </Pressable>
+          {replacing ? null : (
+            <Pressable onPress={removeSelected} disabled={!selectedCount} style={[s.removeBtn, !selectedCount && { opacity: 0.4 }]}>
+              <Text style={s.removeText}>Remove{selectedCount ? ` (${selectedCount})` : ''}</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     );
@@ -360,23 +422,39 @@ export function PhotoBlockEditor({
   return (
     <View>
       {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Press and hold a photo, then drag to rearrange</Text> : null}
-      <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} />
-      <View style={s.actionsRow}>
-        <Pressable onPress={addImage} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
-          <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
-        </Pressable>
-        <Pressable onPress={() => setSelecting(true)} disabled={!draftImages.length}>
-          <Text style={[s.manageText, { color: colors.onBgDim }]}>Select to remove</Text>
-        </Pressable>
-      </View>
+      <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} uris={draftUris} ratios={draftRatios} />
+      {isPolaroid ? (
+        <View style={s.shapeRow}>
+          <Text style={[s.shapeText, { color: colors.onBgDim, marginRight: 2 }]}>Add a photo:</Text>
+          {POLAROID_RATIOS.map((r) => (
+            <Pressable key={r.label} onPress={() => pickFor(null, r.ratio)} style={[s.shapeChip, { borderColor: colors.onBgDim }]} accessibilityLabel={`Add ${r.label} photo`}>
+              <View style={{ width: 14, height: Math.round(14 / r.ratio), borderWidth: 1.5, borderColor: colors.onBg, borderRadius: 2 }} />
+              <Text style={[s.shapeText, { color: colors.onBg }]}>{r.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <View style={s.actionsRow}>
+          <Pressable onPress={() => pickFor(null, FRAME_ASPECT[format])} style={[s.addImgBtn, { borderColor: colors.onBgDim }]}>
+            <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
+          </Pressable>
+        </View>
+      )}
+      {draftImages.length ? (
+        <View style={s.actionsRow}>
+          <Pressable onPress={() => setMode('replace')}>
+            <Text style={[s.manageText, { color: colors.onBgDim }]}>Replace a photo</Text>
+          </Pressable>
+          <Pressable onPress={() => setMode('remove')}>
+            <Text style={[s.manageText, { color: colors.onBgDim }]}>Select to remove</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={s.footer}>
         <Pressable onPress={onCancel} style={s.cancelBtn} hitSlop={6}>
           <Text style={[s.cancelText, { color: colors.onBgDim }]}>Cancel</Text>
         </Pressable>
-        <Pressable
-          onPress={() => onSave({ images: draftImages, count: draftImages.length })}
-          style={[s.saveBtn, { backgroundColor: colors.onBg }]}
-          hitSlop={6}>
+        <Pressable onPress={save} style={[s.saveBtn, { backgroundColor: colors.onBg }]} hitSlop={6}>
           <Text style={[s.saveText, { color: colors.base }]}>Save</Text>
         </Pressable>
       </View>
@@ -410,6 +488,9 @@ const s = StyleSheet.create({
   cancelText: { fontFamily: Font.semibold, fontSize: 13 },
   removeBtn: { backgroundColor: '#c0504d', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8 },
   removeText: { fontFamily: Font.bold, fontSize: 13, color: '#fff' },
+  shapeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  shapeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
+  shapeText: { fontFamily: Font.semibold, fontSize: 12 },
   fmtRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   fmtChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   fmtText: { fontFamily: Font.semibold, fontSize: 12 },

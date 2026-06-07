@@ -1,6 +1,7 @@
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { ImageStyle, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { Font } from '@/constants/openwhen';
 
@@ -32,24 +33,58 @@ const GRADS: [string, string][] = [
 const TILTS = ['-5deg', '4deg', '-3deg', '6deg', '-4deg', '3deg'];
 const grad = (id: number): [string, string] => GRADS[((id % GRADS.length) + GRADS.length) % GRADS.length];
 
+export type PhotoUris = Record<string, string>; // gradient id -> uploaded image uri
+export type PhotoRatios = Record<string, number>; // gradient id -> chosen polaroid frame aspect ratio
+
+// Each layout's frame aspect ratio — also the crop aspect used when uploading a photo into it.
+export const FRAME_ASPECT: Record<PhotoVariant, number> = {
+  polaroid: 1,
+  clothesline: 0.85,
+  filmstrip: 1,
+  collage: 1,
+  photobooth: 1.2,
+};
+// Selectable per-photo polaroid shapes.
+export const POLAROID_RATIOS: { label: string; ratio: number }[] = [
+  { label: 'Square', ratio: 1 },
+  { label: 'Portrait', ratio: 0.8 },
+  { label: 'Landscape', ratio: 1.25 },
+];
+// expo-image-picker's crop `aspect` wants an integer [w, h] pair.
+export const aspectTuple = (ratio: number): [number, number] => [Math.round(ratio * 100), 100];
+
+// One photo frame: the uploaded image (cover-fit) when this id has a uri, else the placeholder gradient.
+function PhotoFill({ id, uris, style }: { id: number; uris?: PhotoUris; style: StyleProp<ViewStyle> }) {
+  const uri = uris?.[String(id)];
+  return uri ? (
+    <Image source={{ uri }} style={style as StyleProp<ImageStyle>} contentFit="cover" />
+  ) : (
+    <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style} />
+  );
+}
+
 export function RevealPhotos({
   count,
   images,
   variant = 'polaroid',
   renderItem = defaultRender,
+  uris,
+  ratios,
 }: {
   count?: number;
   images?: number[];
   variant?: PhotoVariant;
   renderItem?: PhotoRenderItem;
+  uris?: PhotoUris;
+  ratios?: PhotoRatios;
 }) {
   const ids = images && images.length ? images : Array.from({ length: Math.max(1, count ?? 4) }, (_, i) => i);
-  if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} />;
-  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 8)} renderItem={renderItem} />;
-  if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} />;
-  if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 4)} renderItem={renderItem} />;
+  if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} uris={uris} />;
+  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 8)} renderItem={renderItem} uris={uris} />;
+  if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} uris={uris} />;
+  if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 4)} renderItem={renderItem} uris={uris} />;
   const shown = ids.slice(0, 6);
-  return <Polaroids ids={shown} extra={ids.length - shown.length} renderItem={renderItem} />;
+  return <Polaroids ids={shown} extra={ids.length - shown.length} renderItem={renderItem} uris={uris} ratios={ratios} />;
 }
 
 // ── Polaroids ──────────────────────────────────────────────────────────────────
@@ -57,14 +92,14 @@ const OFFSETS = [0, 18, 6, 22, 2, 16];
 const TAPES = ['rgba(214,182,143,0.7)', 'rgba(154,170,124,0.62)', 'rgba(209,160,160,0.6)', 'rgba(140,165,190,0.6)'];
 const DOODLES = ['♡', '✿', '☀', '✦', '❀', '♪'];
 
-function Polaroids({ ids, extra, renderItem }: { ids: number[]; extra: number; renderItem: PhotoRenderItem }) {
+function Polaroids({ ids, extra, renderItem, uris, ratios }: { ids: number[]; extra: number; renderItem: PhotoRenderItem; uris?: PhotoUris; ratios?: PhotoRatios }) {
   return (
     <View style={p.wrap}>
       {ids.map((id, i) =>
         renderItem(
           <View style={[p.card, { transform: [{ rotate: TILTS[id % TILTS.length] }] }]}>
             <View style={[p.tape, { backgroundColor: TAPES[id % TAPES.length] }]} />
-            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={p.photo} />
+            <PhotoFill id={id} uris={uris} style={[p.photo, { aspectRatio: ratios?.[String(id)] ?? 1 }]} />
             <Text style={p.doodle}>{DOODLES[id % DOODLES.length]}</Text>
           </View>,
           i,
@@ -90,7 +125,7 @@ function Polaroids({ ids, extra, renderItem }: { ids: number[]; extra: number; r
 const HANGS = [12, 26, 8, 22];
 const PEGS = ['#c9966a', '#a8a06a', '#b97f7f', '#7f93b0'];
 
-function Clothesline({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+function Clothesline({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRenderItem; uris?: PhotoUris }) {
   return (
     <View style={cl.wrap}>
       <View style={cl.string} />
@@ -100,7 +135,7 @@ function Clothesline({ ids, renderItem }: { ids: number[]; renderItem: PhotoRend
             <>
               <View style={[cl.peg, { backgroundColor: PEGS[id % PEGS.length] }]} />
               <View style={[cl.frame, { transform: [{ rotate: TILTS[id % TILTS.length] }] }]}>
-                <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cl.photo} />
+                <PhotoFill id={id} uris={uris} style={cl.photo} />
               </View>
             </>,
             i,
@@ -128,7 +163,7 @@ function Sprockets() {
 // alternating tilt and a slight overlap so a pair of them reads like a little stack of film.
 const STRIP_TILTS = ['-3deg', '3.5deg'];
 
-function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+function Filmstrip({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRenderItem; uris?: PhotoUris }) {
   // Up to five photos sit on a single strip; six or more split into two balanced strips, the first
   // taking the larger half: 5 → 5, 6 → 3+3, 7 → 4+3, 8 → 4+4.
   const half = Math.ceil(ids.length / 2);
@@ -149,12 +184,7 @@ function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRender
             <Sprockets />
             <View style={fs.frames}>
               {strip.map((id, i) =>
-                renderItem(
-                  <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
-                  offset + i,
-                  id,
-                  fs.frame,
-                ),
+                renderItem(<PhotoFill id={id} uris={uris} style={fs.frameImg} />, offset + i, id, fs.frame),
               )}
             </View>
             <Sprockets />
@@ -166,13 +196,13 @@ function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRender
 }
 
 // ── Collage ────────────────────────────────────────────────────────────────────
-function Collage({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+function Collage({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRenderItem; uris?: PhotoUris }) {
   const tile = (i: number, style: StyleProp<ViewStyle>, withSticker?: boolean) =>
     ids[i] === undefined
       ? null
       : renderItem(
           <>
-            <LinearGradient colors={grad(ids[i])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={co.fill} />
+            <PhotoFill id={ids[i]} uris={uris} style={co.fill} />
             {withSticker ? (
               <View style={co.sticker}>
                 <Text style={co.stickerText}>♡</Text>
@@ -203,18 +233,11 @@ function Collage({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderIt
 // ── Photobooth ───────────────────────────────────────────────────────────────────
 // A narrow print of stacked frames, like a photo-booth strip. One column, so the editor's
 // drag-to-reorder slides cleanly within the single strip (no cross-parent moves).
-function Photobooth({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+function Photobooth({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRenderItem; uris?: PhotoUris }) {
   return (
     <View style={pbo.wrap}>
       <View style={pbo.strip}>
-        {ids.map((id, i) =>
-          renderItem(
-            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pbo.photo} />,
-            i,
-            id,
-            pbo.cell,
-          ),
-        )}
+        {ids.map((id, i) => renderItem(<PhotoFill id={id} uris={uris} style={pbo.photo} />, i, id, pbo.cell))}
         <Text style={pbo.caption}>♡</Text>
       </View>
     </View>

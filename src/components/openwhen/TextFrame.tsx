@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { type ReactNode } from 'react';
 import { type DimensionValue, StyleSheet, Text, type TextStyle, View } from 'react-native';
 
+import { BLUE_FLORAL, BlossomBouquet, Bow, CornerScroll, CornerSprig, PINK_FLORAL, RoseSpray } from '@/components/openwhen/FrameMotifs';
 import { Font } from '@/constants/openwhen';
 
 // Selectable card styles for a text/letter block — the text equivalent of the photo layouts.
@@ -23,7 +24,11 @@ export type TextFrameId =
   | 'comic'
   | 'filmstrip'
   | 'blueprint'
-  | 'cosmic';
+  | 'cosmic'
+  | 'lace'
+  | 'floral'
+  | 'watercolor'
+  | 'rococo';
 
 export const TEXT_FRAMES: { id: TextFrameId; label: string }[] = [
   { id: 'letter', label: 'Letter' },
@@ -37,6 +42,10 @@ export const TEXT_FRAMES: { id: TextFrameId; label: string }[] = [
   { id: 'filmstrip', label: 'Film strip' },
   { id: 'blueprint', label: 'Blueprint' },
   { id: 'cosmic', label: 'Cosmic' },
+  { id: 'lace', label: 'Lace' },
+  { id: 'floral', label: 'Floral' },
+  { id: 'watercolor', label: 'Watercolor' },
+  { id: 'rococo', label: 'Rococo' },
   { id: 'chalkboard', label: 'Chalkboard' },
 ];
 
@@ -121,6 +130,47 @@ const s = StyleSheet.create({
 
   // cosmic: scattered stars
   star: { position: 'absolute', backgroundColor: '#ffffff' },
+
+  // ornate bodies
+  laceBody: { fontFamily: Font.script, fontSize: 18, color: '#4a4036', lineHeight: 26, marginBottom: 6 },
+  floralBody: { fontFamily: Font.regular, fontSize: 14, color: '#46433a', lineHeight: 22, marginBottom: 10 },
+  watercolorBody: { fontFamily: Font.regular, fontSize: 14, color: '#5a4e48', lineHeight: 22, marginBottom: 10 },
+  rococoBody: { fontFamily: Font.script, fontSize: 18, color: '#4a4036', lineHeight: 26, marginBottom: 6 },
+
+  // ornate cards
+  laceCard: { backgroundColor: '#f6f3ec', borderRadius: 5, overflow: 'hidden', minHeight: 96 },
+  floralCard: { backgroundColor: '#f3f1e8', borderRadius: 6, overflow: 'hidden', minHeight: 98 },
+  watercolorCard: { backgroundColor: '#efe9dd', borderRadius: 6, overflow: 'hidden', minHeight: 100 },
+  rococoCard: { borderRadius: 12, marginTop: 12, shadowColor: '#5a6478', shadowOpacity: 0.4, shadowRadius: 14, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+
+  padLace: { padding: 26 },
+  padFloral: { paddingVertical: 30, paddingHorizontal: 26 },
+  padWatercolor: { paddingTop: 28, paddingHorizontal: 24, paddingBottom: 60 },
+  padRococo: { paddingTop: 42, paddingBottom: 42, paddingHorizontal: 40 },
+
+  // corner anchors (mirror with inline transforms in the decor)
+  posTL: { position: 'absolute', top: 0, left: 0 },
+  posTR: { position: 'absolute', top: 0, right: 0 },
+  posBL: { position: 'absolute', bottom: 0, left: 0 },
+  posBR: { position: 'absolute', bottom: 0, right: 0 },
+
+  // lace: scalloped bands on every edge + an inner keyline
+  laceKeyline: { position: 'absolute', top: 13, left: 13, right: 13, bottom: 13, borderWidth: 1, borderColor: '#cdc4af', borderRadius: 3 },
+  laceTop: { position: 'absolute', top: 4, left: 5, right: 5, height: 8, flexDirection: 'row', justifyContent: 'center', overflow: 'hidden' },
+  laceBottom: { position: 'absolute', bottom: 4, left: 5, right: 5, height: 8, flexDirection: 'row', justifyContent: 'center', overflow: 'hidden' },
+  laceLeft: { position: 'absolute', left: 4, top: 5, bottom: 5, width: 8, flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' },
+  laceRight: { position: 'absolute', right: 4, top: 5, bottom: 5, width: 8, flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' },
+  bumpDown: { width: 12, height: 6, borderBottomLeftRadius: 6, borderBottomRightRadius: 6, backgroundColor: '#ded6c3', marginHorizontal: 1.5 },
+  bumpUp: { width: 12, height: 6, borderTopLeftRadius: 6, borderTopRightRadius: 6, backgroundColor: '#ded6c3', marginHorizontal: 1.5 },
+  bumpRight: { width: 6, height: 12, borderTopRightRadius: 6, borderBottomRightRadius: 6, backgroundColor: '#ded6c3', marginVertical: 1.5 },
+  bumpLeft: { width: 6, height: 12, borderTopLeftRadius: 6, borderBottomLeftRadius: 6, backgroundColor: '#ded6c3', marginVertical: 1.5 },
+
+  // floral: thin double keyline inside the corner sprigs
+  floralKeyline: { position: 'absolute', top: 8, left: 8, right: 8, bottom: 8, borderWidth: 1, borderColor: '#bcc8d8', borderRadius: 4 },
+  floralKeyline2: { position: 'absolute', top: 11, left: 11, right: 11, bottom: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: '#cfd7e2', borderRadius: 3 },
+
+  // rococo: the ivory writing panel inset within the blue border
+  rococoPanel: { position: 'absolute', top: 24, left: 22, right: 22, bottom: 24, backgroundColor: '#f7f3ea', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(180,160,120,0.4)' },
 });
 
 const BARS = [2, 1, 3, 1, 1, 2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 1, 1, 3, 1, 2, 2, 1, 3, 1];
@@ -229,6 +279,58 @@ function cosmicDecor(): ReactNode {
   );
 }
 
+function laceDecor(): ReactNode {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={s.laceKeyline} />
+      <View style={s.laceTop}>{Array.from({ length: 26 }, (_, i) => <View key={i} style={s.bumpDown} />)}</View>
+      <View style={s.laceBottom}>{Array.from({ length: 26 }, (_, i) => <View key={i} style={s.bumpUp} />)}</View>
+      <View style={s.laceLeft}>{Array.from({ length: 32 }, (_, i) => <View key={i} style={s.bumpRight} />)}</View>
+      <View style={s.laceRight}>{Array.from({ length: 32 }, (_, i) => <View key={i} style={s.bumpLeft} />)}</View>
+    </View>
+  );
+}
+
+function floralDecor(): ReactNode {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={s.floralKeyline} />
+      <View style={s.floralKeyline2} />
+      <View style={[s.posTL, { top: 3, left: 3 }]}><CornerSprig size={60} p={BLUE_FLORAL} /></View>
+      <View style={[s.posTR, { top: 3, right: 3, transform: [{ scaleX: -1 }] }]}><CornerSprig size={60} p={BLUE_FLORAL} /></View>
+      <View style={[s.posBL, { bottom: 3, left: 3, transform: [{ scaleY: -1 }] }]}><CornerSprig size={60} p={BLUE_FLORAL} /></View>
+      <View style={[s.posBR, { bottom: 3, right: 3, transform: [{ scaleX: -1 }, { scaleY: -1 }] }]}><CornerSprig size={60} p={BLUE_FLORAL} /></View>
+    </View>
+  );
+}
+
+function watercolorDecor(): ReactNode {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={s.posBL}><BlossomBouquet size={88} p={PINK_FLORAL} /></View>
+      <View style={[s.posBR, { transform: [{ scaleX: -1 }] }]}><BlossomBouquet size={88} p={PINK_FLORAL} /></View>
+      <View style={[s.posTL, { top: 7, left: 7 }]}><Bow /></View>
+      <View style={[s.posTR, { top: 7, right: 7, transform: [{ scaleX: -1 }] }]}><Bow /></View>
+    </View>
+  );
+}
+
+function rococoDecor(): ReactNode {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={s.rococoPanel} />
+      <View style={[s.posTL, { top: 14, left: 12 }]}><CornerScroll size={50} /></View>
+      <View style={[s.posTR, { top: 14, right: 12, transform: [{ scaleX: -1 }] }]}><CornerScroll size={50} /></View>
+      <View style={[s.posBL, { bottom: 14, left: 12, transform: [{ scaleY: -1 }] }]}><CornerScroll size={50} /></View>
+      <View style={[s.posBR, { bottom: 14, right: 12, transform: [{ scaleX: -1 }, { scaleY: -1 }] }]}><CornerScroll size={50} /></View>
+      <View style={s.posTL}><RoseSpray size={56} /></View>
+      <View style={[s.posTR, { transform: [{ scaleX: -1 }] }]}><RoseSpray size={56} /></View>
+      <View style={[s.posBL, { transform: [{ scaleY: -1 }] }]}><RoseSpray size={56} /></View>
+      <View style={[s.posBR, { transform: [{ scaleX: -1 }, { scaleY: -1 }] }]}><RoseSpray size={56} /></View>
+    </View>
+  );
+}
+
 type FrameDef = {
   wrapper?: object; // optional outer view that carries the shadow when the card itself clips
   card: object; // card container (no content padding)
@@ -252,6 +354,10 @@ const DEFS: Record<TextFrameId, FrameDef> = {
   filmstrip: { wrapper: s.clipShadow, card: s.filmCard, pad: s.padFilm, body: s.filmBody, placeholder: 'rgba(236,232,226,0.45)', decor: filmDecor },
   blueprint: { wrapper: s.clipShadow, card: s.blueprintCard, pad: s.padBlueprint, body: s.blueprintBody, placeholder: 'rgba(234,242,251,0.5)', decor: blueprintDecor },
   cosmic: { card: s.cosmicCard, gradient: ['#1c1547', '#3a2470', '#221a4f'], pad: s.padCosmic, body: s.cosmicBody, placeholder: 'rgba(239,234,255,0.5)', decor: cosmicDecor },
+  lace: { wrapper: s.clipShadow, card: s.laceCard, pad: s.padLace, body: s.laceBody, placeholder: '#b3a98f', decor: laceDecor },
+  floral: { wrapper: s.clipShadow, card: s.floralCard, pad: s.padFloral, body: s.floralBody, placeholder: '#a7adb0', decor: floralDecor },
+  watercolor: { wrapper: s.clipShadow, card: s.watercolorCard, pad: s.padWatercolor, body: s.watercolorBody, placeholder: '#b3a6a0', decor: watercolorDecor },
+  rococo: { card: s.rococoCard, gradient: ['#bcc8da', '#d4dbe7', '#c1ccdb'], pad: s.padRococo, body: s.rococoBody, placeholder: '#a89f93', decor: rococoDecor },
 };
 
 export function frameBody(id: TextFrameId): TextStyle {
@@ -391,6 +497,41 @@ export function TextFrameGlyph({ id, accent = DEFAULT_ACCENT }: { id: TextFrameI
       </View>
     );
   }
+  if (id === 'lace') {
+    return (
+      <View style={[g.box, { backgroundColor: '#f6f3ec', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#d6cdb8' }]}>
+        <View style={g.laceRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={g.laceBump} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+  if (id === 'floral') {
+    return (
+      <View style={[g.box, { backgroundColor: '#f3f1e8', overflow: 'hidden' }]}>
+        <View style={[g.miniFlower, { top: 2, left: 2, backgroundColor: '#8ea6c6' }]} />
+        <View style={[g.miniLeaf, { top: 7, left: 7 }]} />
+        <View style={[g.miniFlower, { bottom: 2, right: 2, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#b3c3d9' }]} />
+      </View>
+    );
+  }
+  if (id === 'watercolor') {
+    return (
+      <View style={[g.box, { backgroundColor: '#efe9dd', overflow: 'hidden' }]}>
+        <View style={[g.miniFlower, { bottom: 2, left: 2, backgroundColor: '#e3aebe' }]} />
+        <View style={[g.miniFlower, { bottom: 5, left: 6, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#eec6d2' }]} />
+      </View>
+    );
+  }
+  if (id === 'rococo') {
+    return (
+      <View style={[g.box, { backgroundColor: '#c2cedd', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={g.rococoMini} />
+      </View>
+    );
+  }
   // letter (default)
   return <View style={[g.box, { backgroundColor: '#f7f2e8' }]} />;
 }
@@ -412,4 +553,9 @@ const g = StyleSheet.create({
   bpH: { position: 'absolute', left: 0, right: 0, top: 7, height: 1, backgroundColor: 'rgba(150,200,255,0.5)' },
   bpV: { position: 'absolute', top: 0, bottom: 0, left: 10, width: 1, backgroundColor: 'rgba(150,200,255,0.5)' },
   star: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#fff' },
+  laceRow: { position: 'absolute', top: 1, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
+  laceBump: { width: 4, height: 2, borderBottomLeftRadius: 2, borderBottomRightRadius: 2, backgroundColor: '#d8d0bd', marginHorizontal: 0.5 },
+  miniFlower: { position: 'absolute', width: 4, height: 4, borderRadius: 2 },
+  miniLeaf: { position: 'absolute', width: 3, height: 1.5, borderRadius: 1, backgroundColor: '#a9b596', transform: [{ rotate: '45deg' }] },
+  rococoMini: { width: 12, height: 9, borderRadius: 2, backgroundColor: '#f3efe5' },
 });

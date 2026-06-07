@@ -129,31 +129,36 @@ function Sprockets() {
 const STRIP_TILTS = ['-3deg', '3.5deg'];
 
 function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
-  const strips: number[][] = [];
-  for (let i = 0; i < ids.length; i += 4) strips.push(ids.slice(i, i + 4));
+  // Up to five photos sit on a single strip; six or more split into two balanced strips, the first
+  // taking the larger half: 5 → 5, 6 → 3+3, 7 → 4+3, 8 → 4+4.
+  const half = Math.ceil(ids.length / 2);
+  const strips: number[][] = ids.length <= 5 ? [ids] : [ids.slice(0, half), ids.slice(half)];
   return (
     <View style={fs.wrap}>
-      {strips.map((strip, si) => (
-        <View
-          key={si}
-          style={[
-            fs.strip,
-            { transform: [{ rotate: STRIP_TILTS[si % STRIP_TILTS.length] }], marginTop: si === 0 ? 0 : -16, zIndex: si + 1 },
-          ]}>
-          <Sprockets />
-          <View style={fs.frames}>
-            {strip.map((id, i) =>
-              renderItem(
-                <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
-                si * 4 + i,
-                id,
-                fs.frame,
-              ),
-            )}
+      {strips.map((strip, si) => {
+        const offset = strips.slice(0, si).reduce((sum, s) => sum + s.length, 0);
+        return (
+          <View
+            key={si}
+            style={[
+              fs.strip,
+              { transform: [{ rotate: STRIP_TILTS[si % STRIP_TILTS.length] }], marginTop: si === 0 ? 0 : -16, zIndex: si + 1 },
+            ]}>
+            <Sprockets />
+            <View style={fs.frames}>
+              {strip.map((id, i) =>
+                renderItem(
+                  <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
+                  offset + i,
+                  id,
+                  fs.frame,
+                ),
+              )}
+            </View>
+            <Sprockets />
           </View>
-          <Sprockets />
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }

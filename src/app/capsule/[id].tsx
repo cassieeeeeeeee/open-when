@@ -102,7 +102,7 @@ function BandLayer({
       {band.photo ? (
         <>
           <Image source={{ uri: band.photo }} style={StyleSheet.absoluteFill} contentFit="cover" />
-          <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={['rgba(0,0,0,0.32)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.4)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
         </>
       ) : (
         <>
@@ -760,7 +760,7 @@ export default function CapsuleScreen() {
       {bgImage ? (
         <>
           <Image source={{ uri: bgImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
-          <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={['rgba(0,0,0,0.32)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.4)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
         </>
       ) : (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">

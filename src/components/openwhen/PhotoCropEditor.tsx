@@ -127,7 +127,7 @@ export function PhotoCropEditor({
       const res = await manipulateAsync(
         uri,
         [{ crop: { originX: Math.round(cropX), originY: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) } }],
-        { compress: 0.85, format: SaveFormat.JPEG },
+        { compress: 0.92, format: SaveFormat.JPEG },
       );
       onDone(res.uri, ratio);
     } catch {

@@ -185,6 +185,8 @@ export function StickerLayer({
   onSelect,
   onUpdate,
   onRemove,
+  onMoveRelease,
+  onGrab,
   onDragActive,
 }: {
   stickers: Sticker[];
@@ -194,6 +196,10 @@ export function StickerLayer({
   onSelect?: (id: string | null) => void;
   onUpdate?: (id: string, patch: Partial<Sticker>) => void;
   onRemove?: (id: string) => void;
+  // Called on move-release with both the finger's screen point and the new normalized position, so
+  // the screen can decide whether the sticker was dropped onto the palette (delete) or just moved.
+  onMoveRelease?: (id: string, screenX: number, screenY: number, nx: number, ny: number) => void;
+  onGrab?: () => void; // a drag just started — a good moment to (re)measure drop targets like the palette
   onDragActive?: (active: boolean) => void;
 }) {
   // One set of shared values drives whichever sticker is currently active (only one at a time).
@@ -250,6 +256,10 @@ export function StickerLayer({
 
   return (
     <View ref={layerRef} style={StyleSheet.absoluteFill} pointerEvents={editable ? 'box-none' : 'none'}>
+      {/* Tap any empty spot on the element (behind the stickers) to deselect. */}
+      {editable && selected ? (
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => onSelect?.(null)} accessibilityLabel="Deselect sticker" />
+      ) : null}
       {stickers.map((st) =>
         editable ? (
           <DraggableSticker
@@ -268,9 +278,10 @@ export function StickerLayer({
             onBegin={() => beginActive(st)}
             onActivate={() => markActive(st)}
             onTransformEnd={(s, r) => persistTransform(st.id, s, r)}
-            onPersist={(patch) => onUpdate?.(st.id, patch)}
+            onMoveRelease={(sx, sy, nx, ny) => (onMoveRelease ? onMoveRelease(st.id, sx, sy, nx, ny) : onUpdate?.(st.id, { x: nx, y: ny }))}
+            onGrab={() => onGrab?.()}
             settle={settle}
-            onTap={() => onSelect?.(selectedId === st.id ? null : st.id)}
+            onTap={() => onSelect?.(st.id)}
           />
         ) : (
           <StaticSticker key={st.id} sticker={st} w={w} h={h} />
@@ -327,7 +338,8 @@ function DraggableSticker({
   onBegin,
   onActivate,
   onTransformEnd,
-  onPersist,
+  onMoveRelease,
+  onGrab,
   settle,
   onTap,
 }: {
@@ -345,7 +357,8 @@ function DraggableSticker({
   onBegin: () => void;
   onActivate: () => void;
   onTransformEnd: (scale: number, rot: number) => void;
-  onPersist: (patch: Partial<Sticker>) => void;
+  onMoveRelease: (screenX: number, screenY: number, nx: number, ny: number) => void;
+  onGrab: () => void;
   settle: () => void;
   onTap: () => void;
 }) {
@@ -376,6 +389,7 @@ function DraggableSticker({
     onPanResponderGrant: () => {
       armed.current = false;
       measureStage();
+      onGrab(); // (re)measure the palette so a drag-to-delete can be detected on release
       clearTimer();
       timer.current = setTimeout(() => {
         armed.current = true;
@@ -397,7 +411,8 @@ function DraggableSticker({
         const r = stageRect.current;
         const sw = r.w || w;
         const sh = r.h || h;
-        onPersist({ x: clamp(sticker.x + g.dx / sw, -0.1, 1.1), y: clamp(sticker.y + g.dy / sh, -0.1, 1.1) });
+        // Report the screen point (for a drop-on-palette delete) AND the new normalized position.
+        onMoveRelease(g.moveX, g.moveY, clamp(sticker.x + g.dx / sw, -0.1, 1.1), clamp(sticker.y + g.dy / sh, -0.1, 1.1));
         settle();
       } else if (Math.abs(g.dx) < 8 && Math.abs(g.dy) < 8) {
         onTap();

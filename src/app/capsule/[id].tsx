@@ -3,8 +3,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -111,6 +112,49 @@ function BandLayer({
   );
 }
 
+// A palette chip you drag out onto the element to place a sticker. A plain tap (no drag) still adds
+// one at a default spot; a drag reports its screen position so the screen can drop it where released.
+function StickerPaletteChip({
+  sticker,
+  textColor,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  sticker: { kind: StickerKind; label: string };
+  textColor: string;
+  onDragStart: (kind: StickerKind, x: number, y: number) => void;
+  onDragMove: (x: number, y: number) => void;
+  onDragEnd: (kind: StickerKind, x: number, y: number, moved: boolean) => void;
+}) {
+  // Keep the latest callbacks in a ref and create the PanResponder ONCE. The drag re-renders this
+  // component (the ghost follows via state), and a freshly-created responder each render would reset
+  // its gesture state mid-drag — making every drop register as a tap (dx/dy ≈ 0). A stable responder
+  // keeps a continuous gesture; the ref lets it still call the current closures.
+  const cb = useRef({ onDragStart, onDragMove, onDragEnd, kind: sticker.kind });
+  cb.current = { onDragStart, onDragMove, onDragEnd, kind: sticker.kind };
+  const responderRef = useRef<ReturnType<typeof PanResponder.create> | null>(null);
+  if (!responderRef.current) {
+    responderRef.current = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (_, g) => cb.current.onDragStart(cb.current.kind, g.x0, g.y0),
+      onPanResponderMove: (_, g) => cb.current.onDragMove(g.moveX, g.moveY),
+      onPanResponderRelease: (_, g) => cb.current.onDragEnd(cb.current.kind, g.moveX, g.moveY, Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6),
+      onPanResponderTerminate: (_, g) => cb.current.onDragEnd(cb.current.kind, g.moveX, g.moveY, Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6),
+    });
+  }
+  const responder = responderRef.current;
+  return (
+    <View {...responder.panHandlers} style={styles.stickerPaletteChip} accessibilityLabel={`Add ${sticker.label} sticker`}>
+      <StickerGlyph kind={sticker.kind} size={26} />
+      <Text numberOfLines={1} style={[styles.stickerPaletteText, { color: textColor }]}>
+        {sticker.label}
+      </Text>
+    </View>
+  );
+}
+
 // Per-section appearance controls, shown while a block is being edited: a Theme button (which opens
 // the swatch grid — choosing one themes this block and every block below it, until another override),
 // a Layout button for photo blocks (a menu of photo layouts), and a Background-photo button. Each
@@ -126,8 +170,11 @@ function SectionAppearance({
   onSelectPhoto,
   onAddPhoto,
   onRemovePhoto,
-  onAddSticker,
   onClearStickers,
+  paletteRef,
+  onStickerDragStart,
+  onStickerDragMove,
+  onStickerDragEnd,
 }: {
   item: CapsuleContent;
   sec: CapsuleTheme;
@@ -139,8 +186,11 @@ function SectionAppearance({
   onSelectPhoto: (uri: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: () => void;
-  onAddSticker: (kind: StickerKind) => void;
   onClearStickers: () => void;
+  paletteRef: { current: View | null };
+  onStickerDragStart: (kind: StickerKind, x: number, y: number) => void;
+  onStickerDragMove: (x: number, y: number) => void;
+  onStickerDragEnd: (kind: StickerKind, x: number, y: number, moved: boolean) => void;
 }) {
   const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'stickers'>('none');
   const toggle = (m: 'theme' | 'layout' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
@@ -211,29 +261,33 @@ function SectionAppearance({
         </View>
       ) : null}
       {open === 'stickers' ? (
-        <View style={styles.sectionLayoutMenu}>
+        <View ref={paletteRef} style={styles.sectionLayoutMenu}>
           {STICKERS.map((sti) => (
-            <Pressable
+            <StickerPaletteChip
               key={sti.kind}
-              onPress={() => onAddSticker(sti.kind)}
-              style={styles.stickerPaletteChip}
-              accessibilityLabel={`Add ${sti.label} sticker`}>
-              <StickerGlyph kind={sti.kind} size={26} />
-              <Text numberOfLines={1} style={[styles.stickerPaletteText, { color: sec.onBg }]}>{sti.label}</Text>
-            </Pressable>
+              sticker={sti}
+              textColor={sec.onBg}
+              onDragStart={onStickerDragStart}
+              onDragMove={onStickerDragMove}
+              onDragEnd={onStickerDragEnd}
+            />
           ))}
           {(item.stickers?.length ?? 0) > 0 ? (
             <Pressable onPress={onClearStickers} hitSlop={6} style={styles.stickerClearRow}>
               <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Remove all decorations ({item.stickers?.length})</Text>
             </Pressable>
-          ) : (
-            <Text style={[styles.stickerHint, { color: sec.onBgDim }]}>Tap to add, then press and hold a sticker to move it.</Text>
-          )}
+          ) : null}
+          <Text style={[styles.stickerHint, { color: sec.onBgDim }]}>
+            Drag a sticker onto your element to place it. Press and hold a placed one to move it — drag it back here to remove it.
+          </Text>
         </View>
       ) : null}
     </View>
   );
 }
+
+type WindowMeasurable = { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null;
+type Rect = { x: number; y: number; w: number; h: number };
 
 export default function CapsuleScreen() {
   const { id, preview } = useLocalSearchParams<{ id: string; preview?: string }>();
@@ -253,6 +307,10 @@ export default function CapsuleScreen() {
   const [blockTops, setBlockTops] = useState<number[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [stageSizes, setStageSizes] = useState<{ w: number; h: number }[]>([]);
+  const [paletteDrag, setPaletteDrag] = useState<{ kind: StickerKind; x: number; y: number } | null>(null);
+  const paletteRectRef = useRef<Rect | null>(null);
+  const paletteViewRef = useRef<View | null>(null);
+  const stageRefs = useRef<Record<number, View | null>>({});
   const scrollY = useSharedValue(0);
   // Drop any sticker selection when the edited element changes, so a stray handle/✕ doesn't linger.
   useEffect(() => setSelectedStickerId(null), [editingIndex]);
@@ -438,6 +496,48 @@ export default function CapsuleScreen() {
       }),
     );
     setSelectedStickerId(null);
+  };
+
+  // ---- Sticker drag-and-drop: from the palette onto the element (place), and back onto the
+  //      palette (delete). Hit-testing is in window coordinates; scroll is locked during a drag.
+  const inRect = (x: number, y: number, r: Rect | null) => !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  const measurePalette = () => {
+    const v = paletteViewRef.current as WindowMeasurable;
+    if (v?.measureInWindow) v.measureInWindow((x, y, w, h) => (paletteRectRef.current = w && h ? { x, y, w, h } : null));
+    else paletteRectRef.current = null;
+  };
+  const addStickerAt = (index: number, kind: StickerKind, nx: number, ny: number) => {
+    const list = contents[index]?.stickers ?? [];
+    const clamp01 = (v: number) => Math.max(-0.05, Math.min(1.05, v));
+    const sticker: Sticker = { id: makeStickerId(), kind, x: clamp01(nx), y: clamp01(ny) };
+    updateItem(index, { stickers: [...list, sticker] });
+    setSelectedStickerId(sticker.id);
+  };
+  // A placed sticker was dropped: onto the open palette → delete, otherwise move to the new position.
+  const onStickerMoveRelease = (index: number, id: string, screenX: number, screenY: number, nx: number, ny: number) => {
+    if (inRect(screenX, screenY, paletteRectRef.current)) removeSticker(index, id);
+    else updateSticker(index, id, { x: nx, y: ny });
+  };
+  const onPaletteDragStart = (kind: StickerKind, x: number, y: number) => {
+    measurePalette();
+    setPaletteDrag({ kind, x, y });
+    setScrollLocked(true);
+  };
+  const onPaletteDragMove = (x: number, y: number) => setPaletteDrag((d) => (d ? { ...d, x, y } : d));
+  const onPaletteDragEnd = (kind: StickerKind, x: number, y: number, moved: boolean) => {
+    setPaletteDrag(null);
+    setScrollLocked(false);
+    if (editingIndex == null) return;
+    const idx = editingIndex;
+    if (!moved) {
+      addSticker(idx, kind); // a tap (no drag) still adds at a default spot
+      return;
+    }
+    const stage = stageRefs.current[idx] as WindowMeasurable;
+    stage?.measureInWindow?.((sx, sy, sw, sh) => {
+      if (sw && sh && x >= sx && x <= sx + sw && y >= sy && y <= sy + sh) addStickerAt(idx, kind, (x - sx) / sw, (y - sy) / sh);
+      // dropped outside the element → cancelled (nothing added)
+    });
   };
 
   // ---- Sealed capsule ----
@@ -703,6 +803,9 @@ export default function CapsuleScreen() {
                   }}>
                   {i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
                   <View
+                    ref={(el) => {
+                      stageRefs.current[i] = el;
+                    }}
                     style={styles.stickerStage}
                     onLayout={(e) => setStageSize(i, e.nativeEvent.layout.width, e.nativeEvent.layout.height)}>
                     {renderBlock(item, i, sec)}
@@ -714,6 +817,8 @@ export default function CapsuleScreen() {
                       onSelect={setSelectedStickerId}
                       onUpdate={(sid, patch) => updateSticker(i, sid, patch)}
                       onRemove={(sid) => removeSticker(i, sid)}
+                      onMoveRelease={(sid, sx, sy, nx, ny) => onStickerMoveRelease(i, sid, sx, sy, nx, ny)}
+                      onGrab={measurePalette}
                       onDragActive={setScrollLocked}
                     />
                   </View>
@@ -746,8 +851,11 @@ export default function CapsuleScreen() {
                       onSelectPhoto={(uri) => selectItemPhoto(i, uri)}
                       onAddPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}
-                      onAddSticker={(kind) => addSticker(i, kind)}
                       onClearStickers={() => clearStickers(i)}
+                      paletteRef={paletteViewRef}
+                      onStickerDragStart={onPaletteDragStart}
+                      onStickerDragMove={onPaletteDragMove}
+                      onStickerDragEnd={onPaletteDragEnd}
                     />
                   ) : null}
                 </View>
@@ -806,6 +914,13 @@ export default function CapsuleScreen() {
           </Pressable>
         </View>
       )}
+
+      {/* The sticker being dragged out of the palette follows the finger until it's dropped. */}
+      {paletteDrag ? (
+        <View pointerEvents="none" style={[styles.stickerGhost, { left: paletteDrag.x - 24, top: paletteDrag.y - 24 }]}>
+          <StickerGlyph kind={paletteDrag.kind} size={48} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -906,6 +1021,7 @@ const styles = StyleSheet.create({
   layoutChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   layoutChipText: { fontFamily: Font.semibold, fontSize: 12 },
   stickerStage: { position: 'relative' },
+  stickerGhost: { position: 'absolute', width: 48, height: 48, alignItems: 'center', justifyContent: 'center', opacity: 0.92, zIndex: 100 },
   stickerPaletteChip: { alignItems: 'center', width: 54, gap: 3, paddingVertical: 4 },
   stickerPaletteText: { fontFamily: Font.semibold, fontSize: 10.5, textAlign: 'center' },
   stickerClearRow: { width: '100%', alignItems: 'center', marginTop: 4 },

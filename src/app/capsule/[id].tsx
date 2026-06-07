@@ -374,12 +374,23 @@ export default function CapsuleScreen() {
   const [stageSizes, setStageSizes] = useState<{ w: number; h: number }[]>([]);
   const [paletteDrag, setPaletteDrag] = useState<{ kind: StickerKind; x: number; y: number } | null>(null);
   const [bgCropState, setBgCropState] = useState<{ uri: string; w: number; h: number; index: number } | null>(null);
+  // The owner's view has two modes: the "workdesk" (editing tools on) and "preview" (the final reveal,
+  // exactly as the recipient will see it — no editing chrome). `editable` is the workdesk gate.
+  const [previewing, setPreviewing] = useState(false);
   const paletteRectRef = useRef<Rect | null>(null);
   const paletteViewRef = useRef<View | null>(null);
   const stageRefs = useRef<Record<number, View | null>>({});
   const scrollY = useSharedValue(0);
   // Drop any sticker selection when the edited element changes, so a stray handle/✕ doesn't linger.
   useEffect(() => setSelectedStickerId(null), [editingIndex]);
+  // Editing affordances show only in the workdesk; the preview hides them to mirror the final reveal.
+  const editable = isPreview && !previewing;
+  const togglePreview = () => {
+    setEditingIndex(null);
+    setSelectedStickerId(null);
+    setPhotoPicker(false);
+    setPreviewing((v) => !v);
+  };
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
   });
@@ -671,7 +682,7 @@ export default function CapsuleScreen() {
       : 'rgba(255,255,255,0.18)';
 
   const renderBlock = (item: CapsuleContent, index: number, sec: CapsuleTheme) => {
-    const editing = isPreview && editingIndex === index;
+    const editing = editable && editingIndex === index;
     const deleteRow = editing ? (
       <Pressable
         onPress={() => {
@@ -710,7 +721,7 @@ export default function CapsuleScreen() {
               onCancel={() => setEditingIndex(null)}
               onDragActive={setScrollLocked}
             />
-          ) : isPreview ? (
+          ) : editable ? (
             // Outside the editor you can still press-and-hold to rearrange — the new order
             // saves straight to the item, no need to open edit mode first.
             <>
@@ -811,11 +822,19 @@ export default function CapsuleScreen() {
         pointerEvents="none"
       />
       <View style={[styles.barDark, { paddingTop: insets.top + 6 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <ChevronLeftIcon size={22} color={theme.onBg} />
-        </Pressable>
-        <Text style={[styles.unlockedTag, { color: theme.onBg }]}>{isPreview ? 'Preview' : 'Unlocked ✨'}</Text>
-        <View style={styles.spacer} />
+        <View style={styles.barSide}>
+          <Pressable onPress={() => router.back()} hitSlop={8}>
+            <ChevronLeftIcon size={22} color={theme.onBg} />
+          </Pressable>
+        </View>
+        <Text style={[styles.unlockedTag, { color: theme.onBg }]}>{isPreview ? (previewing ? 'Preview' : 'Workdesk') : 'Unlocked ✨'}</Text>
+        <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
+          {isPreview ? (
+            <Pressable onPress={togglePreview} style={[styles.modeToggle, { borderColor: theme.onBgDim }, previewing && { backgroundColor: theme.onBg }]} hitSlop={6} accessibilityLabel={previewing ? 'Back to workdesk' : 'Preview final version'}>
+              <Text style={[styles.modeToggleText, { color: previewing ? theme.colors[0] : theme.onBg }]}>{previewing ? 'Workdesk' : 'Preview'}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       <Animated.ScrollView
@@ -826,7 +845,7 @@ export default function CapsuleScreen() {
           styles.darkScroll,
           // Extra room at the bottom when sections are themed, so the last section can scroll up
           // far enough for its background to finish fading in.
-          { paddingBottom: insets.bottom + (isPreview ? 40 : 96) + (bands.length > 1 ? screenH * 0.4 : 0) },
+          { paddingBottom: insets.bottom + (editable ? 40 : 96) + (bands.length > 1 ? screenH * 0.4 : 0) },
         ]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.titleWrap}>
@@ -835,7 +854,7 @@ export default function CapsuleScreen() {
         </View>
         <Text style={[styles.darkMeta, { color: theme.onBgDim }]}>
           From: {fromName}
-          {whenLabel ? `\n${isPreview ? 'Opens' : 'Unlocked'}: ${whenLabel}` : ''}
+          {whenLabel ? `\n${editable ? 'Opens' : 'Unlocked'}: ${whenLabel}` : ''}
         </Text>
 
         {detail ? (
@@ -870,7 +889,7 @@ export default function CapsuleScreen() {
           <>
             {contents.map((item, i) => {
               const sec = sectionTheme(i, item);
-              const editing = isPreview && editingIndex === i;
+              const editing = editable && editingIndex === i;
               const inheritedName = getCapsuleTheme(i > 0 ? sectionThemeIds[i - 1] : baseThemeId).name;
               // A faint hairline between sections to make the divisions clear. Tie it to the
               // section's text polarity (light text → light line, dark text → dark line) so it
@@ -909,7 +928,7 @@ export default function CapsuleScreen() {
                       onDragActive={setScrollLocked}
                     />
                   </View>
-                  {isPreview ? (
+                  {editable ? (
                     <View style={styles.itemBar}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
                         <View style={[styles.arrowUp, { opacity: i === 0 ? 0.3 : 1 }]}>
@@ -953,11 +972,11 @@ export default function CapsuleScreen() {
 
             {contents.length === 0 ? (
               <Text style={[styles.emptyReveal, { color: theme.onBgDim }]}>
-                Nothing inside yet{isPreview ? ' — add something below.' : '.'}
+                Nothing inside yet{editable ? ' — add something below.' : '.'}
               </Text>
             ) : null}
 
-            {isPreview ? (
+            {editable ? (
               <View style={styles.addWrap}>
                 {contents.length > 0 ? <View style={[styles.divider, styles.closingDivider, { backgroundColor: closingDividerColor }]} /> : null}
                 <Text style={[styles.addLabel, { color: theme.onBgDim }]}>Add to this capsule</Text>
@@ -991,7 +1010,7 @@ export default function CapsuleScreen() {
         )}
       </Animated.ScrollView>
 
-      {isPreview ? null : (
+      {editable ? null : (
         <View style={[styles.actions, { paddingBottom: insets.bottom + 10 }]}>
           <Pressable style={styles.action}>
             <SaveIcon size={20} color={theme.onBg} />
@@ -1044,7 +1063,10 @@ const styles = StyleSheet.create({
   dark: { flex: 1 },
   topScrim: { position: 'absolute', left: 0, right: 0, top: 0 },
   barDark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 },
+  barSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   unlockedTag: { fontFamily: Font.bold, fontSize: 14 },
+  modeToggle: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5 },
+  modeToggleText: { fontFamily: Font.bold, fontSize: 12.5 },
   darkScroll: { paddingHorizontal: 18 },
   titleWrap: { alignItems: 'center', gap: 8, marginTop: 18 },
   whenTitle: { fontFamily: Font.script, fontSize: 30, textAlign: 'center' },

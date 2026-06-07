@@ -1,5 +1,6 @@
 import { type ReactNode, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   LinearTransition,
@@ -232,6 +233,16 @@ export function StickerLayer({
     setActiveId(st.id);
     onDragActive?.(true);
   };
+  // Pinch/rotate seed their own shared values inside the gesture worklet; here we only flip the React
+  // "active" flag (so the glyph reads the live values) and, on release, persist scale/rot + clear.
+  const markActive = (st: Sticker) => {
+    setActiveId(st.id);
+    onDragActive?.(true);
+  };
+  const persistTransform = (id: string, scale: number, rot: number) => {
+    onUpdate?.(id, { scale: Math.round(scale * 100) / 100, rot: Math.round(rot) });
+    settle();
+  };
 
   if (!size || !stickers.length) return null;
   const { w, h } = size;
@@ -255,6 +266,8 @@ export function StickerLayer({
             measureStage={measureStage}
             stageRect={stageRect}
             onBegin={() => beginActive(st)}
+            onActivate={() => markActive(st)}
+            onTransformEnd={(s, r) => persistTransform(st.id, s, r)}
             onPersist={(patch) => onUpdate?.(st.id, patch)}
             settle={settle}
             onTap={() => onSelect?.(selectedId === st.id ? null : st.id)}
@@ -293,9 +306,12 @@ function StaticSticker({ sticker, w, h }: { sticker: Sticker; w: number; h: numb
   );
 }
 
-// One draggable sticker. OUTER owns the position + a LinearTransition layout slide; INNER owns the
-// pan/scale/rotate transforms. On release the persisted x/y change moves OUTER by exactly the drag
-// delta while the pan unwinds the same delta — they sum to a still hold, so there's no snap-back.
+// One draggable sticker. The move is a press-and-hold PanResponder (single finger — verified, and it
+// yields to page scrolling until it arms); pinch/rotate are gesture-handler (two fingers), wrapped
+// around the inner view so single-finger touches still fall through to the move. OUTER owns the
+// position + a LinearTransition layout slide; INNER owns the pan/scale/rotate transforms. On release
+// the persisted x/y change moves OUTER by exactly the drag delta while the pan unwinds the same
+// delta — they sum to a still hold, so there's no snap-back.
 function DraggableSticker({
   sticker,
   w,
@@ -309,6 +325,8 @@ function DraggableSticker({
   measureStage,
   stageRect,
   onBegin,
+  onActivate,
+  onTransformEnd,
   onPersist,
   settle,
   onTap,
@@ -325,6 +343,8 @@ function DraggableSticker({
   measureStage: () => void;
   stageRect: { current: StageRect };
   onBegin: () => void;
+  onActivate: () => void;
+  onTransformEnd: (scale: number, rot: number) => void;
   onPersist: (patch: Partial<Sticker>) => void;
   settle: () => void;
   onTap: () => void;
@@ -389,15 +409,50 @@ function DraggableSticker({
     },
   });
 
+  // Two-finger gestures (gesture-handler): pinch to resize, twist to rotate. They seed + write the
+  // live shared values on the UI thread, flip the React "active" flag, and persist on release. When a
+  // pinch/rotate activates it terminates the single-finger move responder above, so they don't fight.
+  const pinch = Gesture.Pinch()
+    .onStart(() => {
+      panX.value = 0;
+      panY.value = 0;
+      scaleSV.value = sticker.scale ?? 1;
+      rotSV.value = sticker.rot ?? 0;
+      runOnJS(onActivate)();
+    })
+    .onUpdate((e) => {
+      scaleSV.value = clamp((sticker.scale ?? 1) * e.scale, MIN_SCALE, MAX_SCALE);
+    })
+    .onEnd(() => {
+      runOnJS(onTransformEnd)(scaleSV.value, rotSV.value);
+    });
+  const rotation = Gesture.Rotation()
+    .onStart(() => {
+      panX.value = 0;
+      panY.value = 0;
+      scaleSV.value = sticker.scale ?? 1;
+      rotSV.value = sticker.rot ?? 0;
+      runOnJS(onActivate)();
+    })
+    .onUpdate((e) => {
+      rotSV.value = (sticker.rot ?? 0) + (e.rotation * 180) / Math.PI;
+    })
+    .onEnd(() => {
+      runOnJS(onTransformEnd)(scaleSV.value, rotSV.value);
+    });
+  const pinchRotate = Gesture.Simultaneous(pinch, rotation);
+
   return (
     <Animated.View
       accessibilityLabel={`sticker-${sticker.kind}`}
       layout={LinearTransition.duration(SETTLE.duration).easing(Easing.linear)}
       {...responder.panHandlers}
       style={[sl.item, active ? sl.lifted : null, { left: sticker.x * w - BASE / 2, top: sticker.y * h - BASE / 2 }]}>
-      <Animated.View style={[sl.fill, animStyle]}>
-        <StickerGlyph kind={sticker.kind} size={BASE} />
-      </Animated.View>
+      <GestureDetector gesture={pinchRotate}>
+        <Animated.View style={[sl.fill, animStyle]}>
+          <StickerGlyph kind={sticker.kind} size={BASE} />
+        </Animated.View>
+      </GestureDetector>
     </Animated.View>
   );
 }
@@ -487,8 +542,8 @@ function SelectionControls({
       <Pressable onPress={onRemove} hitSlop={8} accessibilityLabel="Remove sticker" style={[sl.handle, sl.delHandle, { left: cx + half - HANDLE / 2, top: cy - half - HANDLE / 2 }]}>
         <Text style={sl.delX}>×</Text>
       </Pressable>
-      <View {...rotateResponder.panHandlers} accessibilityLabel="Rotate sticker" style={[sl.handle, sl.rotHandle, { left: cx - HANDLE / 2, top: cy - half - HANDLE - 8 }]} />
-      <View {...resizeResponder.panHandlers} accessibilityLabel="Resize sticker" style={[sl.handle, sl.szHandle, { left: cx + half - HANDLE / 2, top: cy + half - HANDLE / 2 }]} />
+      <View hitSlop={12} {...rotateResponder.panHandlers} accessibilityLabel="Rotate sticker" style={[sl.handle, sl.rotHandle, { left: cx - HANDLE / 2, top: cy - half - HANDLE - 8 }]} />
+      <View hitSlop={12} {...resizeResponder.panHandlers} accessibilityLabel="Resize sticker" style={[sl.handle, sl.szHandle, { left: cx + half - HANDLE / 2, top: cy + half - HANDLE / 2 }]} />
     </>
   );
 }

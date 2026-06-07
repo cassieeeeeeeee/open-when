@@ -761,6 +761,8 @@ export default function CapsuleScreen() {
           <NoteEditor
             initial={item.preview ?? item.label}
             colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
+            frameId={(item.textFrame ?? 'letter') as TextFrameId}
+            accent={sec.colors[0]}
             onSave={(t) => {
               updateItem(index, { preview: t });
               setEditingIndex(null);

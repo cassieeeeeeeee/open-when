@@ -27,6 +27,28 @@ export type Capsule = {
   contents?: CapsuleContent[]; // what's been added inside
 };
 
+// Decorative stickers the user can place on an element (clouds, flowers, hearts…).
+export type StickerKind =
+  | 'cloud'
+  | 'flower'
+  | 'leaf'
+  | 'heart'
+  | 'star'
+  | 'sparkle'
+  | 'tree'
+  | 'confetti'
+  | 'snowflake'
+  | 'petal';
+
+export type Sticker = {
+  id: string; // stable unique id within the item (used as the React key)
+  kind: StickerKind;
+  x: number; // normalized 0..1, CENTER-anchored, relative to the element's content box
+  y: number; // normalized 0..1, CENTER-anchored
+  scale?: number; // size multiplier, default 1
+  rot?: number; // rotation in degrees, default 0
+};
+
 export type CapsuleContent = {
   type: 'text' | 'photo' | 'video' | 'playlist';
   label: string;
@@ -36,6 +58,7 @@ export type CapsuleContent = {
   images?: number[]; // for photos: ordered gradient ids (placeholder image identities)
   theme?: string; // per-section reveal theme id; cascades to the blocks below until overridden
   backgroundImage?: string; // per-section background photo (local to this block, does not cascade)
+  stickers?: Sticker[]; // free-placed decorations overlaid on this element
 };
 
 /** All capsules — created by the user (for others) or received (from others). */

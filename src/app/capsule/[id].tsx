@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -36,11 +36,12 @@ import {
 import { NoteEditor } from '@/components/openwhen/NoteEditor';
 import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/components/openwhen/PhotoBlockEditor';
 import { RevealPhotos, type PhotoVariant } from '@/components/openwhen/RevealPhotos';
+import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
 import { type CapsuleTheme, getCapsuleTheme } from '@/constants/capsuleThemes';
 import { Font, OW, TONES } from '@/constants/openwhen';
-import { type CapsuleContent, unlockedDetail } from '@/data/sample';
+import { type CapsuleContent, type Sticker, type StickerKind, unlockedDetail } from '@/data/sample';
 import { updateCapsule, useCapsule } from '@/lib/capsules';
 
 const PHOTO_FORMATS: { id: PhotoVariant; label: string }[] = [
@@ -125,6 +126,8 @@ function SectionAppearance({
   onSelectPhoto,
   onAddPhoto,
   onRemovePhoto,
+  onAddSticker,
+  onClearStickers,
 }: {
   item: CapsuleContent;
   sec: CapsuleTheme;
@@ -136,9 +139,11 @@ function SectionAppearance({
   onSelectPhoto: (uri: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: () => void;
+  onAddSticker: (kind: StickerKind) => void;
+  onClearStickers: () => void;
 }) {
-  const [open, setOpen] = useState<'none' | 'theme' | 'layout'>('none');
-  const toggle = (m: 'theme' | 'layout') => setOpen((v) => (v === m ? 'none' : m));
+  const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'stickers'>('none');
+  const toggle = (m: 'theme' | 'layout' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
   const fmt = (item.format ?? 'polaroid') as PhotoVariant;
   return (
     <View style={styles.sectionAppear}>
@@ -157,6 +162,10 @@ function SectionAppearance({
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Layout</Text>
           </Pressable>
         ) : null}
+        <Pressable onPress={() => toggle('stickers')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section decorations">
+          <StickerGlyph kind="flower" size={15} />
+          <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Decor</Text>
+        </Pressable>
       </View>
       {open === 'theme' ? (
         <View style={styles.sectionThemeGrid}>
@@ -201,6 +210,27 @@ function SectionAppearance({
           })}
         </View>
       ) : null}
+      {open === 'stickers' ? (
+        <View style={styles.sectionLayoutMenu}>
+          {STICKERS.map((sti) => (
+            <Pressable
+              key={sti.kind}
+              onPress={() => onAddSticker(sti.kind)}
+              style={styles.stickerPaletteChip}
+              accessibilityLabel={`Add ${sti.label} sticker`}>
+              <StickerGlyph kind={sti.kind} size={26} />
+              <Text numberOfLines={1} style={[styles.stickerPaletteText, { color: sec.onBg }]}>{sti.label}</Text>
+            </Pressable>
+          ))}
+          {(item.stickers?.length ?? 0) > 0 ? (
+            <Pressable onPress={onClearStickers} hitSlop={6} style={styles.stickerClearRow}>
+              <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Remove all decorations ({item.stickers?.length})</Text>
+            </Pressable>
+          ) : (
+            <Text style={[styles.stickerHint, { color: sec.onBgDim }]}>Tap to add, then press and hold a sticker to move it.</Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -221,7 +251,11 @@ export default function CapsuleScreen() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [scrollLocked, setScrollLocked] = useState(false);
   const [blockTops, setBlockTops] = useState<number[]>([]);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const [stageSizes, setStageSizes] = useState<{ w: number; h: number }[]>([]);
   const scrollY = useSharedValue(0);
+  // Drop any sticker selection when the edited element changes, so a stray handle/✕ doesn't linger.
+  useEffect(() => setSelectedStickerId(null), [editingIndex]);
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
   });
@@ -353,6 +387,57 @@ export default function CapsuleScreen() {
         return next;
       }),
     );
+  };
+
+  // ---- Stickers (free-placed decorations on an element) ----
+  // Record an element's content-box size (measured on the sticker "stage") so normalized sticker
+  // coordinates can be converted to pixels. Guard against no-op updates to avoid layout→setState loops.
+  const setStageSize = (index: number, w: number, h: number) => {
+    setStageSizes((prev) => {
+      const cur = prev[index];
+      if (cur && cur.w === w && cur.h === h) return prev;
+      const next = prev.slice();
+      next[index] = { w, h };
+      return next;
+    });
+  };
+  const addSticker = (index: number, kind: StickerKind) => {
+    const list = contents[index]?.stickers ?? [];
+    const n = list.length;
+    // Cascade new stickers diagonally from the top-left so repeated taps don't stack invisibly.
+    const sticker: Sticker = { id: makeStickerId(), kind, x: 0.22 + (n % 4) * 0.06, y: 0.2 + (n % 4) * 0.06 };
+    updateItem(index, { stickers: [...list, sticker] });
+  };
+  const updateSticker = (index: number, stickerId: string, patch: Partial<Sticker>) => {
+    const list = contents[index]?.stickers;
+    if (!list) return;
+    updateItem(index, { stickers: list.map((s) => (s.id === stickerId ? { ...s, ...patch } : s)) });
+  };
+  const removeSticker = (index: number, stickerId: string) => {
+    const list = contents[index]?.stickers;
+    if (!list) return;
+    const next = list.filter((s) => s.id !== stickerId);
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index) return c;
+        const copy = { ...c };
+        if (next.length) copy.stickers = next;
+        else delete copy.stickers; // last one gone → strip the key (Firestore rejects undefined)
+        return copy;
+      }),
+    );
+    setSelectedStickerId(null);
+  };
+  const clearStickers = (index: number) => {
+    saveContents(
+      contents.map((c, k) => {
+        if (k !== index || c.stickers === undefined) return c;
+        const copy = { ...c };
+        delete copy.stickers;
+        return copy;
+      }),
+    );
+    setSelectedStickerId(null);
   };
 
   // ---- Sealed capsule ----
@@ -617,7 +702,21 @@ export default function CapsuleScreen() {
                     });
                   }}>
                   {i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
-                  {renderBlock(item, i, sec)}
+                  <View
+                    style={styles.stickerStage}
+                    onLayout={(e) => setStageSize(i, e.nativeEvent.layout.width, e.nativeEvent.layout.height)}>
+                    {renderBlock(item, i, sec)}
+                    <StickerLayer
+                      stickers={item.stickers ?? []}
+                      size={stageSizes[i]}
+                      editable={editing}
+                      selectedId={selectedStickerId}
+                      onSelect={setSelectedStickerId}
+                      onUpdate={(sid, patch) => updateSticker(i, sid, patch)}
+                      onRemove={(sid) => removeSticker(i, sid)}
+                      onDragActive={setScrollLocked}
+                    />
+                  </View>
                   {isPreview ? (
                     <View style={styles.itemBar}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>
@@ -647,6 +746,8 @@ export default function CapsuleScreen() {
                       onSelectPhoto={(uri) => selectItemPhoto(i, uri)}
                       onAddPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}
+                      onAddSticker={(kind) => addSticker(i, kind)}
+                      onClearStickers={() => clearStickers(i)}
                     />
                   ) : null}
                 </View>
@@ -804,6 +905,11 @@ const styles = StyleSheet.create({
   sectionLayoutMenu: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 },
   layoutChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
   layoutChipText: { fontFamily: Font.semibold, fontSize: 12 },
+  stickerStage: { position: 'relative' },
+  stickerPaletteChip: { alignItems: 'center', width: 54, gap: 3, paddingVertical: 4 },
+  stickerPaletteText: { fontFamily: Font.semibold, fontSize: 10.5, textAlign: 'center' },
+  stickerClearRow: { width: '100%', alignItems: 'center', marginTop: 4 },
+  stickerHint: { width: '100%', fontFamily: Font.medium, fontSize: 11, textAlign: 'center', marginTop: 4, paddingHorizontal: 10, lineHeight: 15 },
   themeTab: { alignItems: 'center', paddingTop: 2 },
   themeGrabber: { width: 34, height: 4, borderRadius: 2, opacity: 0.5, marginBottom: 7 },
   themeTabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 2 },

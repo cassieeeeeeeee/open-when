@@ -112,36 +112,69 @@ function BandLayer({
   );
 }
 
-// A palette chip you drag out onto the element to place a sticker. A plain tap (no drag) still adds
-// one at a default spot; a drag reports its screen position so the screen can drop it where released.
+// A palette chip you press-and-hold, then drag out onto the element to drop a sticker exactly where
+// you release. This is the same long-press-to-arm gesture as the photo rearrange and the placed-
+// sticker move: it yields to page scrolling until the hold arms (so a flick still scrolls the page),
+// then keeps the drag. A plain tap does nothing — placement is drag-only (no spawn-on-tap).
 function StickerPaletteChip({
   sticker,
   textColor,
   onDragStart,
   onDragMove,
   onDragEnd,
+  onDragCancel,
 }: {
   sticker: { kind: StickerKind; label: string };
   textColor: string;
   onDragStart: (kind: StickerKind, x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
-  onDragEnd: (kind: StickerKind, x: number, y: number, moved: boolean) => void;
+  onDragEnd: (kind: StickerKind, x: number, y: number) => void;
+  onDragCancel: () => void;
 }) {
-  // Keep the latest callbacks in a ref and create the PanResponder ONCE. The drag re-renders this
-  // component (the ghost follows via state), and a freshly-created responder each render would reset
-  // its gesture state mid-drag — making every drop register as a tap (dx/dy ≈ 0). A stable responder
-  // keeps a continuous gesture; the ref lets it still call the current closures.
-  const cb = useRef({ onDragStart, onDragMove, onDragEnd, kind: sticker.kind });
-  cb.current = { onDragStart, onDragMove, onDragEnd, kind: sticker.kind };
+  // Latest callbacks in a ref + a PanResponder created ONCE. The ghost follows via state, which
+  // re-renders this chip; a fresh responder each render would reset its gesture state mid-drag.
+  const cb = useRef({ onDragStart, onDragMove, onDragEnd, onDragCancel, kind: sticker.kind });
+  cb.current = { onDragStart, onDragMove, onDragEnd, onDragCancel, kind: sticker.kind };
+  const armed = useRef(false);
+  const start = useRef({ x: 0, y: 0 });
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimer = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
   const responderRef = useRef<ReturnType<typeof PanResponder.create> | null>(null);
   if (!responderRef.current) {
     responderRef.current = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (_, g) => cb.current.onDragStart(cb.current.kind, g.x0, g.y0),
-      onPanResponderMove: (_, g) => cb.current.onDragMove(g.moveX, g.moveY),
-      onPanResponderRelease: (_, g) => cb.current.onDragEnd(cb.current.kind, g.moveX, g.moveY, Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6),
-      onPanResponderTerminate: (_, g) => cb.current.onDragEnd(cb.current.kind, g.moveX, g.moveY, Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6),
+      onPanResponderTerminationRequest: () => !armed.current, // let the ScrollView scroll until armed
+      onPanResponderGrant: (_, g) => {
+        armed.current = false;
+        start.current = { x: g.x0, y: g.y0 };
+        clearTimer();
+        timer.current = setTimeout(() => {
+          armed.current = true;
+          cb.current.onDragStart(cb.current.kind, start.current.x, start.current.y);
+        }, 250);
+      },
+      onPanResponderMove: (_, g) => {
+        if (!armed.current) {
+          if (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8) clearTimer(); // moved before the hold → a scroll
+          return;
+        }
+        cb.current.onDragMove(g.moveX, g.moveY);
+      },
+      onPanResponderRelease: (_, g) => {
+        clearTimer();
+        if (armed.current) cb.current.onDragEnd(cb.current.kind, g.moveX, g.moveY);
+        armed.current = false;
+      },
+      onPanResponderTerminate: () => {
+        clearTimer();
+        if (armed.current) cb.current.onDragCancel();
+        armed.current = false;
+      },
     });
   }
   const responder = responderRef.current;
@@ -175,6 +208,7 @@ function SectionAppearance({
   onStickerDragStart,
   onStickerDragMove,
   onStickerDragEnd,
+  onStickerDragCancel,
 }: {
   item: CapsuleContent;
   sec: CapsuleTheme;
@@ -190,7 +224,8 @@ function SectionAppearance({
   paletteRef: { current: View | null };
   onStickerDragStart: (kind: StickerKind, x: number, y: number) => void;
   onStickerDragMove: (x: number, y: number) => void;
-  onStickerDragEnd: (kind: StickerKind, x: number, y: number, moved: boolean) => void;
+  onStickerDragEnd: (kind: StickerKind, x: number, y: number) => void;
+  onStickerDragCancel: () => void;
 }) {
   const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'stickers'>('none');
   const toggle = (m: 'theme' | 'layout' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
@@ -270,6 +305,7 @@ function SectionAppearance({
               onDragStart={onStickerDragStart}
               onDragMove={onStickerDragMove}
               onDragEnd={onStickerDragEnd}
+              onDragCancel={onStickerDragCancel}
             />
           ))}
           {(item.stickers?.length ?? 0) > 0 ? (
@@ -278,7 +314,7 @@ function SectionAppearance({
             </Pressable>
           ) : null}
           <Text style={[styles.stickerHint, { color: sec.onBgDim }]}>
-            Drag a sticker onto your element to place it. Press and hold a placed one to move it — drag it back here to remove it.
+            Press and hold a sticker, then drag it onto your element to place it. Drag a placed one to move it — drag it back here to remove it.
           </Text>
         </View>
       ) : null}
@@ -459,13 +495,6 @@ export default function CapsuleScreen() {
       return next;
     });
   };
-  const addSticker = (index: number, kind: StickerKind) => {
-    const list = contents[index]?.stickers ?? [];
-    const n = list.length;
-    // Cascade new stickers diagonally from the top-left so repeated taps don't stack invisibly.
-    const sticker: Sticker = { id: makeStickerId(), kind, x: 0.22 + (n % 4) * 0.06, y: 0.2 + (n % 4) * 0.06 };
-    updateItem(index, { stickers: [...list, sticker] });
-  };
   const updateSticker = (index: number, stickerId: string, patch: Partial<Sticker>) => {
     const list = contents[index]?.stickers;
     if (!list) return;
@@ -519,24 +548,24 @@ export default function CapsuleScreen() {
     else updateSticker(index, id, { x: nx, y: ny });
   };
   const onPaletteDragStart = (kind: StickerKind, x: number, y: number) => {
-    measurePalette();
     setPaletteDrag({ kind, x, y });
     setScrollLocked(true);
   };
   const onPaletteDragMove = (x: number, y: number) => setPaletteDrag((d) => (d ? { ...d, x, y } : d));
-  const onPaletteDragEnd = (kind: StickerKind, x: number, y: number, moved: boolean) => {
+  const onPaletteDragCancel = () => {
+    setPaletteDrag(null);
+    setScrollLocked(false);
+  };
+  const onPaletteDragEnd = (kind: StickerKind, x: number, y: number) => {
     setPaletteDrag(null);
     setScrollLocked(false);
     if (editingIndex == null) return;
     const idx = editingIndex;
-    if (!moved) {
-      addSticker(idx, kind); // a tap (no drag) still adds at a default spot
-      return;
-    }
+    // Drop the sticker where it's released — but only if that's actually on the element. Released
+    // anywhere else (e.g. back over the palette, or off the element) → cancelled, nothing is added.
     const stage = stageRefs.current[idx] as WindowMeasurable;
     stage?.measureInWindow?.((sx, sy, sw, sh) => {
       if (sw && sh && x >= sx && x <= sx + sw && y >= sy && y <= sy + sh) addStickerAt(idx, kind, (x - sx) / sw, (y - sy) / sh);
-      // dropped outside the element → cancelled (nothing added)
     });
   };
 
@@ -856,6 +885,7 @@ export default function CapsuleScreen() {
                       onStickerDragStart={onPaletteDragStart}
                       onStickerDragMove={onPaletteDragMove}
                       onStickerDragEnd={onPaletteDragEnd}
+                      onStickerDragCancel={onPaletteDragCancel}
                     />
                   ) : null}
                 </View>

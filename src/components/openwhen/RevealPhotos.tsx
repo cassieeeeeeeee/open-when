@@ -142,7 +142,9 @@ function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRender
             key={si}
             style={[
               fs.strip,
-              { transform: [{ rotate: STRIP_TILTS[si % STRIP_TILTS.length] }], marginTop: si === 0 ? 0 : -16, zIndex: si + 1 },
+              // Earlier (upper) strips stack on top of later ones, so each strip's downward shadow
+            // falls onto the strip below it and stays visible.
+            { transform: [{ rotate: STRIP_TILTS[si % STRIP_TILTS.length] }], marginTop: si === 0 ? 0 : -16, zIndex: strips.length - si },
             ]}>
             <Sprockets />
             <View style={fs.frames}>

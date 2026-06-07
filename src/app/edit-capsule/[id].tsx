@@ -103,7 +103,7 @@ export default function EditCapsuleScreen() {
         <Pressable
           style={styles.previewBtn}
           onPress={() => id && router.push({ pathname: '/capsule/[id]', params: { id, preview: '1' } })}>
-          <Text style={styles.previewText}>Preview capsule ✨</Text>
+          <Text style={styles.previewText}>Open workdesk ✨</Text>
         </Pressable>
 
         {opened ? (

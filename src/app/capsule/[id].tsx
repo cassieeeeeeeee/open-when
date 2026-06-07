@@ -704,9 +704,11 @@ export default function CapsuleScreen() {
       const ratios = item.photoRatios;
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>
-            {imgs.length} {imgs.length === 1 ? 'photo' : 'photos'}
-          </Text>
+          {editable ? (
+            <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>
+              {imgs.length} {imgs.length === 1 ? 'photo' : 'photos'}
+            </Text>
+          ) : null}
           {editing ? (
             <PhotoBlockEditor
               images={imgs}
@@ -907,7 +909,7 @@ export default function CapsuleScreen() {
                       return next;
                     });
                   }}>
-                  {i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
+                  {editable && i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
                   <View
                     ref={(el) => {
                       stageRefs.current[i] = el;

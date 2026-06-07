@@ -54,6 +54,7 @@ export type CapsuleContent = {
   label: string;
   preview?: string; // short snippet shown when the item is expanded
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
+  textFrame?: string; // for text: the card style (letter | note | card | ruled | script | chalkboard)
   count?: number; // for photos: how many images
   images?: number[]; // for photos: ordered gradient ids (placeholder identity + drag identity + decoration)
   photoUris?: Record<string, string>; // for photos: gradient id -> uploaded image uri (missing id = gradient placeholder)

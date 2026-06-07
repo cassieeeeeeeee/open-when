@@ -40,6 +40,7 @@ import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/compo
 import { PhotoCropEditor } from '@/components/openwhen/PhotoCropEditor';
 import { type PhotoRatios, type PhotoUris, type PhotoVariant, RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
+import { TEXT_FRAMES, TextFrame, type TextFrameId, TextFrameGlyph } from '@/components/openwhen/TextFrame';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
 import { type CapsuleTheme, getCapsuleTheme } from '@/constants/capsuleThemes';
@@ -202,6 +203,7 @@ function SectionAppearance({
   onSetTheme,
   onClearTheme,
   onSetLayout,
+  onSetFrame,
   onSelectPhoto,
   onAddPhoto,
   onRemovePhoto,
@@ -219,6 +221,7 @@ function SectionAppearance({
   onSetTheme: (id: string) => void;
   onClearTheme: () => void;
   onSetLayout: (format: PhotoVariant) => void;
+  onSetFrame: (id: TextFrameId) => void;
   onSelectPhoto: (uri: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: () => void;
@@ -229,9 +232,10 @@ function SectionAppearance({
   onStickerDragEnd: (kind: StickerKind, x: number, y: number) => void;
   onStickerDragCancel: () => void;
 }) {
-  const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'stickers'>('none');
-  const toggle = (m: 'theme' | 'layout' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
+  const [open, setOpen] = useState<'none' | 'theme' | 'layout' | 'frame' | 'stickers'>('none');
+  const toggle = (m: 'theme' | 'layout' | 'frame' | 'stickers') => setOpen((v) => (v === m ? 'none' : m));
   const fmt = (item.format ?? 'polaroid') as PhotoVariant;
+  const textFrame = (item.textFrame ?? 'letter') as TextFrameId;
   return (
     <View style={styles.sectionAppear}>
       <View style={styles.sectionAppearRow}>
@@ -247,6 +251,12 @@ function SectionAppearance({
           <Pressable onPress={() => toggle('layout')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section layout">
             <FormatGlyph id={fmt} color={sec.onBg} size={14} />
             <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Layout</Text>
+          </Pressable>
+        ) : null}
+        {item.type === 'text' ? (
+          <Pressable onPress={() => toggle('frame')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section frame">
+            <TextFrameGlyph id={textFrame} accent={sec.colors[0]} />
+            <Text style={[styles.bgBtnText, { color: sec.onBg }]}>Frame</Text>
           </Pressable>
         ) : null}
         <Pressable onPress={() => toggle('stickers')} style={[styles.bgBtn, { borderColor: sec.onBgDim }]} accessibilityLabel="Section decorations">
@@ -291,6 +301,23 @@ function SectionAppearance({
                 onPress={() => { onSetLayout(f.id); setOpen('none'); }}
                 style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }]}>
                 <FormatGlyph id={f.id} color={fg} />
+                <Text style={[styles.layoutChipText, { color: fg }]}>{f.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {open === 'frame' ? (
+        <View style={styles.sectionLayoutMenu}>
+          {TEXT_FRAMES.map((f) => {
+            const on = textFrame === f.id;
+            const fg = on ? sec.colors[0] : sec.onBg;
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => { onSetFrame(f.id); setOpen('none'); }}
+                style={[styles.layoutChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }]}>
+                <TextFrameGlyph id={f.id} accent={sec.colors[0]} />
                 <Text style={[styles.layoutChipText, { color: fg }]}>{f.label}</Text>
               </Pressable>
             );
@@ -741,13 +768,11 @@ export default function CapsuleScreen() {
             onCancel={() => setEditingIndex(null)}
           />
         ) : (
-          <View style={styles.letter}>
-            {(item.preview ? item.preview.split('\n') : [item.label]).map((p, k) => (
-              <Text key={k} style={styles.letterP}>
-                {p}
-              </Text>
-            ))}
-          </View>
+          <TextFrame
+            frameId={(item.textFrame ?? 'letter') as TextFrameId}
+            lines={item.preview ? item.preview.split('\n') : [item.label]}
+            accent={sec.colors[0]}
+          />
         )}
         {deleteRow}
       </View>
@@ -908,6 +933,7 @@ export default function CapsuleScreen() {
                       onSetTheme={(themeId) => setItemTheme(i, themeId)}
                       onClearTheme={() => clearItemTheme(i)}
                       onSetLayout={(fmt) => updateItem(i, { format: fmt })}
+                      onSetFrame={(frameId) => updateItem(i, { textFrame: frameId })}
                       onSelectPhoto={(uri) => selectItemPhoto(i, uri)}
                       onAddPhoto={() => pickItemBackground(i)}
                       onRemovePhoto={() => clearItemBackground(i)}

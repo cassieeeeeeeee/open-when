@@ -398,6 +398,12 @@ export default function CapsuleScreen() {
       : base;
   };
 
+  // Colour for the little closing line under the last element — matches the bottom section's polarity.
+  const closingDividerColor =
+    contents.length > 0 && sectionTheme(contents.length - 1, contents[contents.length - 1]).statusBar === 'dark'
+      ? 'rgba(0,0,0,0.12)'
+      : 'rgba(255,255,255,0.18)';
+
   const renderBlock = (item: CapsuleContent, index: number, sec: CapsuleTheme) => {
     const editing = isPreview && editingIndex === index;
     const deleteRow = editing ? (
@@ -655,6 +661,7 @@ export default function CapsuleScreen() {
 
             {isPreview ? (
               <View style={styles.addWrap}>
+                {contents.length > 0 ? <View style={[styles.divider, styles.closingDivider, { backgroundColor: closingDividerColor }]} /> : null}
                 <Text style={[styles.addLabel, { color: theme.onBgDim }]}>Add to this capsule</Text>
                 <View style={styles.addRow}>
                   {ADD_TYPES.map((t) => (
@@ -735,6 +742,7 @@ const styles = StyleSheet.create({
   sig: { fontFamily: Font.script, fontSize: 20, color: '#3a3630' },
 
   divider: { height: 1, marginTop: 16, marginBottom: 2, marginHorizontal: 4, borderRadius: 1 },
+  closingDivider: { alignSelf: 'center', width: '44%', marginTop: 0, marginBottom: 22, marginHorizontal: 0 },
   section: { marginTop: 12 },
   sectionLabel: { fontFamily: Font.bold, fontSize: 12.5, marginBottom: 8 },
   dragHintReveal: { fontFamily: Font.medium, fontSize: 11, marginTop: -2, marginBottom: 2 },

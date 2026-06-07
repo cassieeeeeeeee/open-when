@@ -45,7 +45,7 @@ export function RevealPhotos({
 }) {
   const ids = images && images.length ? images : Array.from({ length: Math.max(1, count ?? 4) }, (_, i) => i);
   if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} />;
-  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 3)} renderItem={renderItem} />;
+  if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 8)} renderItem={renderItem} />;
   if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} />;
   if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 4)} renderItem={renderItem} />;
   const shown = ids.slice(0, 6);
@@ -124,21 +124,36 @@ function Sprockets() {
   );
 }
 
+// Up to four frames per strip; any extra photos spill onto a second strip. The strips get a gentle
+// alternating tilt and a slight overlap so a pair of them reads like a little stack of film.
+const STRIP_TILTS = ['-3deg', '3.5deg'];
+
 function Filmstrip({ ids, renderItem }: { ids: number[]; renderItem: PhotoRenderItem }) {
+  const strips: number[][] = [];
+  for (let i = 0; i < ids.length; i += 4) strips.push(ids.slice(i, i + 4));
   return (
-    <View style={fs.strip}>
-      <Sprockets />
-      <View style={fs.frames}>
-        {ids.map((id, i) =>
-          renderItem(
-            <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
-            i,
-            id,
-            fs.frame,
-          ),
-        )}
-      </View>
-      <Sprockets />
+    <View style={fs.wrap}>
+      {strips.map((strip, si) => (
+        <View
+          key={si}
+          style={[
+            fs.strip,
+            { transform: [{ rotate: STRIP_TILTS[si % STRIP_TILTS.length] }], marginTop: si === 0 ? 0 : -16, zIndex: si + 1 },
+          ]}>
+          <Sprockets />
+          <View style={fs.frames}>
+            {strip.map((id, i) =>
+              renderItem(
+                <LinearGradient colors={grad(id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={fs.frameImg} />,
+                si * 4 + i,
+                id,
+                fs.frame,
+              ),
+            )}
+          </View>
+          <Sprockets />
+        </View>
+      ))}
     </View>
   );
 }
@@ -252,10 +267,21 @@ const cl = StyleSheet.create({
 });
 
 const fs = StyleSheet.create({
-  strip: { backgroundColor: '#2b2b30', borderRadius: 6, paddingVertical: 7, paddingHorizontal: 7, marginTop: 10 },
+  wrap: { paddingTop: 10, paddingBottom: 6 },
+  strip: {
+    backgroundColor: '#2b2b30',
+    borderRadius: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 7,
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 6,
+  },
   holes: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2, marginVertical: 5 },
-  hole: { width: 12, height: 9, borderRadius: 2, backgroundColor: '#f4efe4' },
-  frames: { flexDirection: 'row', gap: 6 },
+  hole: { width: 10, height: 8, borderRadius: 2, backgroundColor: '#f4efe4' },
+  frames: { flexDirection: 'row', gap: 5 },
   frame: { flex: 1 },
   frameImg: { width: '100%', aspectRatio: 1, borderRadius: 2 },
 });

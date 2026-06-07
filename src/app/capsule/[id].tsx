@@ -40,7 +40,8 @@ import { DraggablePhotos, FORMATS, FormatGlyph, PhotoBlockEditor } from '@/compo
 import { PhotoCropEditor } from '@/components/openwhen/PhotoCropEditor';
 import { type PhotoRatios, type PhotoUris, type PhotoVariant, RevealPhotos } from '@/components/openwhen/RevealPhotos';
 import { makeStickerId, STICKERS, StickerGlyph, StickerLayer } from '@/components/openwhen/StickerArt';
-import { FONT_CHOICES, fontFamilyFor, SIZE_CHOICES, TEXT_COLORS, TEXT_FRAMES, TextFrame, type TextFrameId, TextFrameGlyph } from '@/components/openwhen/TextFrame';
+import { FONT_CHOICES, fontFamilyFor, TEXT_COLORS, TEXT_FRAMES, TextFrame, type TextFrameId, TextFrameGlyph } from '@/components/openwhen/TextFrame';
+import { ColorSpectrum, SizeWheel } from '@/components/openwhen/TextStyleControls';
 import { ThemeArt } from '@/components/openwhen/ThemeArt';
 import { ThemeSwatchGrid } from '@/components/openwhen/ThemeSwatchGrid';
 import { type CapsuleTheme, getCapsuleTheme } from '@/constants/capsuleThemes';
@@ -349,19 +350,7 @@ function SectionAppearance({
               );
             })}
           </View>
-          <View style={styles.sectionLayoutMenu}>
-            {SIZE_CHOICES.map((sz) => {
-              const on = item.textSize === sz.size;
-              return (
-                <Pressable
-                  key={sz.label}
-                  onPress={() => onSetTextStyle({ textSize: sz.size })}
-                  style={[styles.sizeChip, on ? { backgroundColor: sec.onBg } : { borderColor: sec.onBgDim, borderWidth: 1 }, overPhoto && !on && styles.onPhotoChip]}>
-                  <Text style={{ fontFamily: Font.semibold, fontSize: sz.size, lineHeight: sz.size + 4, color: on ? sec.colors[0] : sec.onBg }}>{sz.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <SizeWheel value={item.textSize} onChange={(n) => onSetTextStyle({ textSize: n })} color={sec.onBg} />
           <View style={styles.swatchRow}>
             <Pressable
               onPress={() => onSetTextStyle({ textColor: undefined })}
@@ -378,6 +367,7 @@ function SectionAppearance({
               />
             ))}
           </View>
+          <ColorSpectrum value={item.textColor} onChange={(hex) => onSetTextStyle({ textColor: hex })} />
           <Pressable onPress={() => onSetTextStyle({ textFont: undefined, textSize: undefined, textColor: undefined })} hitSlop={6} style={styles.textResetRow}>
             <Text style={[styles.bgRemove, { color: sec.onBgDim }]}>Reset text styling</Text>
           </Pressable>

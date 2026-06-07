@@ -1,6 +1,9 @@
 import { Caveat_700Bold } from '@expo-google-fonts/caveat';
 import { DancingScript_700Bold } from '@expo-google-fonts/dancing-script';
 import { Lora_500Medium } from '@expo-google-fonts/lora';
+import { PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
+import { Quicksand_500Medium } from '@expo-google-fonts/quicksand';
+import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
@@ -76,6 +79,9 @@ export default function RootLayout() {
     DancingScript_700Bold,
     Lora_500Medium,
     Caveat_700Bold,
+    PlayfairDisplay_600SemiBold,
+    Quicksand_500Medium,
+    SpaceMono_400Regular,
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,

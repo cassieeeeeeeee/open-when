@@ -57,6 +57,9 @@ const DEFAULT_ACCENT = '#d98a8a';
 export const FONT_CHOICES: { key: string; label: string; family: string }[] = [
   { key: 'sans', label: 'Sans', family: Font.regular },
   { key: 'serif', label: 'Serif', family: Font.serif },
+  { key: 'display', label: 'Display', family: Font.display },
+  { key: 'round', label: 'Round', family: Font.round },
+  { key: 'mono', label: 'Mono', family: Font.mono },
   { key: 'script', label: 'Script', family: Font.script },
   { key: 'hand', label: 'Casual', family: Font.hand },
   { key: 'bold', label: 'Bold', family: Font.bold },
@@ -68,13 +71,6 @@ FONT_CHOICES.forEach((f) => {
 export function fontFamilyFor(key?: string): string | undefined {
   return key ? FONT_BY_KEY[key] : undefined;
 }
-
-export const SIZE_CHOICES: { label: string; size: number }[] = [
-  { label: 'S', size: 13 },
-  { label: 'M', size: 15 },
-  { label: 'L', size: 18 },
-  { label: 'XL', size: 22 },
-];
 
 export const TEXT_COLORS = ['#3a3630', '#1b1b1b', '#ffffff', '#9a6a3a', '#b5536a', '#4f6f99', '#5f7a52', '#7a5a86'];
 

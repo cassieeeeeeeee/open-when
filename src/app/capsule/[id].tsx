@@ -230,12 +230,20 @@ export default function CapsuleScreen() {
   // forcing light text + a dark scrim; otherwise the per-section bands paint the background.
   const bgImage = capsule?.backgroundImage ?? null;
   const baseThemeId = capsule?.theme ?? 'twilight';
-  const baseTheme = getCapsuleTheme(baseThemeId);
-  const theme = bgImage ? { ...baseTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const } : baseTheme;
   const contents = contentsDraft ?? capsule?.contents ?? [];
   // Photos the user has uploaded for this capsule, offered as background options alongside the
   // themes in every section's theme menu. Drafted locally (like contents) so sample capsules update.
   const photoLib = libDraft ?? capsule?.backgroundPhotos ?? [];
+  // The reveal opens on whatever sits at the very top: the title/meta and the first background band
+  // take the first element's theme (and its photo, if it has one) instead of always the capsule's
+  // base theme — so the beginning matches the topmost section rather than defaulting away from it.
+  const topThemeId = contents[0]?.theme ?? baseThemeId;
+  const topPhoto = contents[0]?.backgroundImage ?? null;
+  const topTheme = getCapsuleTheme(topThemeId);
+  const theme =
+    bgImage || topPhoto
+      ? { ...topTheme, onBg: '#ffffff', onBgDim: 'rgba(255,255,255,0.86)', statusBar: 'light' as const }
+      : topTheme;
   // Each block's effective theme id: its own `theme` if set, else the nearest block above it,
   // else the capsule base — so choosing a theme cascades to the blocks below until overridden.
   const sectionThemeIds = useMemo(() => {
@@ -257,10 +265,10 @@ export default function CapsuleScreen() {
       if (prev && prev.themeId === themeId && (prev.photo ?? null) === (photo ?? null)) return;
       out.push({ startY: out.length === 0 ? 0 : top, themeId, photo });
     };
-    push(baseThemeId, undefined, 0); // the header (title/meta) sits on the base theme
+    push(topThemeId, topPhoto ?? undefined, 0); // header mirrors the first element, so the top matches it (and merges with section 0)
     contents.forEach((item, i) => push(sectionThemeIds[i], item.backgroundImage, blockTops[i] ?? Number.MAX_SAFE_INTEGER));
     return out;
-  }, [contents, sectionThemeIds, blockTops, baseThemeId]);
+  }, [contents, sectionThemeIds, blockTops, topThemeId, topPhoto]);
   const showReveal = !!detail || capsule?.status === 'unlocked' || isPreview;
 
   const saveContents = (next: CapsuleContent[]) => {

@@ -1,11 +1,7 @@
-// ───────────────────────────────────────────────────────────────────────────
-// PASTE YOUR FIREBASE WEB CONFIG HERE.
-// Firebase console → Project settings (gear) → Your apps → web app → firebaseConfig.
-// These web values are NOT secrets in Firebase's model (security comes from rules),
-// but keep them here in one place. `firebaseEnabled` flips to true automatically
-// once you replace the placeholder apiKey below — until then the app runs exactly
-// as it does now (no login required).
-// ───────────────────────────────────────────────────────────────────────────
+// Firebase web config for this project. These web values are not secrets in Firebase's
+// model — access is enforced by Firestore security rules, not by hiding the config — so
+// they live here in one place. `firebaseEnabled` stays false until a real apiKey is set,
+// so the app runs on bundled sample data (no login) until the backend is wired up.
 export const firebaseConfig = {
   apiKey: 'AIzaSyBIah-WZxkC6WB_HvS4hktHzhLHaMMJnr8',
   authDomain: 'open-when-c82c9.firebaseapp.com',

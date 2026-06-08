@@ -870,6 +870,7 @@ export default function CapsuleScreen() {
       color: item.textColor ?? (noneFrame ? sec.onBg : undefined),
       textAlign: item.textAlign as 'left' | 'center' | 'right' | undefined,
     };
+    const frameView = <TextFrame frameId={tFrame} lines={item.preview ? item.preview.split('\n') : [item.label]} accent={sec.colors[0]} bodyOverride={bodyOverride} />;
     return (
       <View>
         {editing ? (
@@ -880,14 +881,16 @@ export default function CapsuleScreen() {
             accent={sec.colors[0]}
             bodyOverride={bodyOverride}
             placeholderColor={noneFrame ? sec.onBgDim : undefined}
-            onSave={(t) => {
-              updateItem(index, { preview: t });
-              setEditingIndex(null);
-            }}
-            onCancel={() => setEditingIndex(null)}
+            onCommit={(t) => updateItem(index, { preview: t })}
+            onClose={() => setEditingIndex(null)}
           />
+        ) : editable ? (
+          // Tap the text itself to edit it — no need to hit the pencil first.
+          <Pressable onPress={() => setEditingIndex(index)} accessibilityLabel="Edit text">
+            {frameView}
+          </Pressable>
         ) : (
-          <TextFrame frameId={tFrame} lines={item.preview ? item.preview.split('\n') : [item.label]} accent={sec.colors[0]} bodyOverride={bodyOverride} />
+          frameView
         )}
         {deleteRow}
       </View>

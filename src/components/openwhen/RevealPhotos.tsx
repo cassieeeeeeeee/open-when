@@ -82,7 +82,7 @@ export function RevealPhotos({
   if (variant === 'clothesline') return <Clothesline ids={ids.slice(0, 4)} renderItem={renderItem} uris={uris} />;
   if (variant === 'filmstrip') return <Filmstrip ids={ids.slice(0, 8)} renderItem={renderItem} uris={uris} />;
   if (variant === 'collage') return <Collage ids={ids.slice(0, 5)} renderItem={renderItem} uris={uris} />;
-  if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 4)} renderItem={renderItem} uris={uris} />;
+  if (variant === 'photobooth') return <Photobooth ids={ids.slice(0, 8)} renderItem={renderItem} uris={uris} />;
   const shown = ids.slice(0, 6);
   return <Polaroids ids={shown} extra={ids.length - shown.length} renderItem={renderItem} uris={uris} ratios={ratios} />;
 }
@@ -231,15 +231,33 @@ function Collage({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRe
 }
 
 // ── Photobooth ───────────────────────────────────────────────────────────────────
-// A narrow print of stacked frames, like a photo-booth strip. One column, so the editor's
-// drag-to-reorder slides cleanly within the single strip (no cross-parent moves).
+// A narrow print of stacked frames, like a photo-booth strip. Up to five photos sit on one
+// column; six or more split into two balanced strips standing side by side, the first taking
+// the larger half: 5 → 5, 6 → 3+3, 7 → 4+3, 8 → 4+4 (same split as the filmstrip). Each strip
+// gets a gentle alternating tilt (and the second a slight drop) so a pair reads like two prints
+// laid down together. Two strips means the editor's drag can cross between columns — fine, it
+// reorders the flat id list by window position, exactly like the filmstrip already does.
+const PBO_TILTS = ['-2.5deg', '3deg'];
+
 function Photobooth({ ids, renderItem, uris }: { ids: number[]; renderItem: PhotoRenderItem; uris?: PhotoUris }) {
+  const half = Math.ceil(ids.length / 2);
+  const strips: number[][] = ids.length <= 5 ? [ids] : [ids.slice(0, half), ids.slice(half)];
   return (
     <View style={pbo.wrap}>
-      <View style={pbo.strip}>
-        {ids.map((id, i) => renderItem(<PhotoFill id={id} uris={uris} style={pbo.photo} />, i, id, pbo.cell))}
-        <Text style={pbo.caption}>♡</Text>
-      </View>
+      {strips.map((strip, si) => {
+        const offset = strips.slice(0, si).reduce((sum, s) => sum + s.length, 0);
+        return (
+          <View
+            key={si}
+            style={[
+              pbo.strip,
+              { transform: [{ rotate: PBO_TILTS[si % PBO_TILTS.length] }], marginTop: si % 2 === 0 ? 0 : 12, zIndex: si },
+            ]}>
+            {strip.map((id, i) => renderItem(<PhotoFill id={id} uris={uris} style={pbo.photo} />, offset + i, id, pbo.cell))}
+            <Text style={pbo.caption}>♡</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -340,13 +358,13 @@ const co = StyleSheet.create({
 });
 
 const pbo = StyleSheet.create({
-  wrap: { alignItems: 'center', paddingTop: 12, paddingBottom: 6 },
+  wrap: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-start', gap: 14, paddingTop: 14, paddingBottom: 12 },
   strip: {
-    width: '47%',
+    width: '40%',
     backgroundColor: '#fffdf8',
     borderRadius: 5,
-    paddingHorizontal: 7,
-    paddingTop: 7,
+    paddingHorizontal: 6,
+    paddingTop: 6,
     paddingBottom: 4,
     alignItems: 'center',
     shadowColor: '#000',
@@ -355,7 +373,7 @@ const pbo = StyleSheet.create({
     shadowOffset: { width: 0, height: 9 },
     elevation: 6,
   },
-  cell: { width: '100%', marginBottom: 6 },
+  cell: { width: '100%', marginBottom: 5 },
   photo: { width: '100%', aspectRatio: 1.2, borderRadius: 2 },
-  caption: { fontFamily: Font.script, fontSize: 16, color: '#b88a93', marginTop: 1 },
+  caption: { fontFamily: Font.script, fontSize: 15, color: '#b88a93', marginTop: 1 },
 });

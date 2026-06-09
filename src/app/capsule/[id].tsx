@@ -59,14 +59,18 @@ const ADD_TYPES: { type: CapsuleContent['type']; label: string }[] = [
   { type: 'text', label: 'Text' },
   { type: 'photo', label: 'Photos' },
   { type: 'video', label: 'Video' },
+  { type: 'audio', label: 'Voice' },
   { type: 'playlist', label: 'Playlist' },
 ];
 const ADD_LABELS: Record<CapsuleContent['type'], string> = {
   text: 'A note',
   photo: 'Photos',
   video: 'Video',
+  audio: 'A voice note',
   playlist: 'Playlist',
 };
+// Faux waveform for the stand-in voice-note tile (until real audio capture/playback lands).
+const AUDIO_BARS = [9, 16, 24, 13, 21, 28, 17, 11, 23, 27, 15, 25, 19, 10, 22, 14, 26, 18, 12, 20];
 
 // How the section backgrounds crossfade as you scroll: a band eases fully in over the last FADE of
 // a screen-height of scroll before its section reaches the top, so the reveal opens on the base
@@ -895,6 +899,29 @@ export default function CapsuleScreen() {
         </View>
       );
     }
+    if (item.type === 'audio') {
+      return (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
+          {renderStage(
+            index,
+            <LinearGradient colors={[sec.colors[1], sec.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.audioTile}>
+              <View style={styles.audioPlay}>
+                <PlayIcon size={15} color={OW.dark} />
+              </View>
+              <View style={styles.audioWave}>
+                {AUDIO_BARS.map((h, k) => (
+                  <View key={k} style={[styles.audioBar, { height: h }]} />
+                ))}
+              </View>
+              <Text style={styles.audioTime}>0:42</Text>
+            </LinearGradient>,
+            editing,
+          )}
+          {deleteRow}
+        </View>
+      );
+    }
     if (item.type === 'playlist') {
       return (
         <View style={styles.section}>
@@ -1237,6 +1264,11 @@ const styles = StyleSheet.create({
   sectionText: { fontFamily: Font.regular, fontSize: 13, lineHeight: 20 },
   videoTile: { height: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
+  audioTile: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 66, borderRadius: 14, paddingHorizontal: 14 },
+  audioPlay: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
+  audioWave: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3, height: 30 },
+  audioBar: { flex: 1, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
+  audioTime: { fontFamily: Font.medium, fontSize: 12, color: 'rgba(255,255,255,0.92)' },
 
   itemBar: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 14, marginBottom: -6 },
   // A dark backdrop so editing chrome stays legible over an uploaded background photo.

@@ -50,7 +50,7 @@ export type Sticker = {
 };
 
 export type CapsuleContent = {
-  type: 'text' | 'photo' | 'video' | 'playlist';
+  type: 'text' | 'photo' | 'video' | 'playlist' | 'audio';
   label: string;
   preview?: string; // short snippet shown when the item is expanded
   format?: string; // for photos: the layout (polaroid | clothesline | filmstrip | collage)
@@ -95,11 +95,13 @@ export type Person = {
   last: string; // "Last memory: 2d ago"
   from: string; // avatar gradient start
   to: string; // avatar gradient end
+  username?: string; // @handle — set when this person doubles as a sendable contact (see findRecipient)
+  email?: string;
 };
 
 export const people: Person[] = [
-  { id: 'p1', name: 'Jess', meta: '132 memories together', last: 'Last memory: 2d ago', from: '#d9a0a0', to: '#9c6f6f' },
-  { id: 'p2', name: 'Sam', meta: '89 memories together', last: 'Last memory: 1d ago', from: '#a0b8d9', to: '#6f86a0' },
+  { id: 'p1', name: 'Jess', meta: '132 memories together', last: 'Last memory: 2d ago', from: '#d9a0a0', to: '#9c6f6f', username: 'jess', email: 'jess@example.com' },
+  { id: 'p2', name: 'Sam', meta: '89 memories together', last: 'Last memory: 1d ago', from: '#a0b8d9', to: '#6f86a0', username: 'sam', email: 'sam@example.com' },
   { id: 'p3', name: 'College Crew', meta: '243 memories together', last: 'Last memory: 3d ago', from: '#b8a0d9', to: '#7f6f9c' },
   { id: 'p4', name: 'Family', meta: '187 memories together', last: 'Last memory: 5d ago', from: '#a0d9b0', to: '#6f9c7c' },
 ];

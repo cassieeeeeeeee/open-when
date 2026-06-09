@@ -19,6 +19,7 @@ import {
   IconProps,
   ImageIcon,
   LockIcon,
+  MicIcon,
   MusicIcon,
   PencilIcon,
   PlayIcon,
@@ -249,6 +250,7 @@ const CONTENT_ICON: Record<CapsuleContent['type'], ComponentType<IconProps>> = {
   text: PencilIcon,
   photo: ImageIcon,
   video: VideoIcon,
+  audio: MicIcon,
   playlist: MusicIcon,
 };
 

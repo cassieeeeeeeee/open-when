@@ -455,9 +455,16 @@ export default function CapsuleScreen() {
   const paletteRectRef = useRef<Rect | null>(null);
   const paletteViewRef = useRef<View | null>(null);
   const stageRefs = useRef<Record<number, View | null>>({});
+  // Set true for one delete so the open text editor's commit-on-unmount (the "save on tap-away"
+  // behaviour) doesn't re-save — and thereby resurrect — the block we're removing. Cleared below.
+  const deleteGuard = useRef(false);
   const scrollY = useSharedValue(0);
-  // Drop any sticker selection when the edited element changes, so a stray handle/✕ doesn't linger.
-  useEffect(() => setSelectedStickerId(null), [editingIndex]);
+  // Drop any sticker selection when the edited element changes, so a stray handle/✕ doesn't linger,
+  // and clear the one-shot delete guard (consumed by the unmount that the delete triggered).
+  useEffect(() => {
+    setSelectedStickerId(null);
+    deleteGuard.current = false;
+  }, [editingIndex]);
   // Editing affordances show only in the workdesk; the preview hides them to mirror the final reveal.
   const editable = isPreview && !previewing;
   const togglePreview = () => {
@@ -805,6 +812,7 @@ export default function CapsuleScreen() {
     const deleteRow = editing ? (
       <Pressable
         onPress={() => {
+          deleteGuard.current = true; // suppress the text editor's unmount-commit so the block can't come back
           removeItem(index);
           setEditingIndex(null);
         }}
@@ -925,7 +933,10 @@ export default function CapsuleScreen() {
             bodyOverride={bodyOverride}
             placeholderColor={noneFrame ? sec.onBgDim : undefined}
             renderStage={(node) => renderStage(index, node, true)}
-            onCommit={(t) => updateItem(index, { preview: t })}
+            onCommit={(t) => {
+              if (deleteGuard.current) return; // mid-delete — don't resurrect the block via auto-save
+              updateItem(index, { preview: t });
+            }}
             onClose={() => setEditingIndex(null)}
           />
         ) : editable ? (
@@ -1232,7 +1243,7 @@ const styles = StyleSheet.create({
   onPhotoChip: { backgroundColor: 'rgba(0,0,0,0.36)', borderColor: 'rgba(255,255,255,0.6)' },
   itemBarOnPhoto: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.32)', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 6, gap: 16, marginBottom: 0 },
   arrowUp: { transform: [{ rotate: '180deg' }] },
-  deleteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, alignSelf: 'flex-start' },
+  deleteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, backgroundColor: 'rgba(214,110,110,0.2)', borderWidth: 1, borderColor: 'rgba(214,110,110,0.6)' },
   deleteRowText: { fontFamily: Font.semibold, fontSize: 12.5, color: '#d98a8a' },
   emptyReveal: { fontFamily: Font.regular, fontSize: 13, textAlign: 'center', marginTop: 24 },
   addWrap: { marginTop: 24 },

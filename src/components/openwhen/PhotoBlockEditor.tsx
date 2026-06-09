@@ -371,6 +371,35 @@ export function PhotoBlockEditor({
     }
   };
 
+  // "+ Add": multi-select from the library. A single image still goes through the crop screen for nice
+  // framing; several picked at once are added straight in (cover-fit) so you're not cropping one by one.
+  const pickMany = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 1 });
+      if (res.canceled || !res.assets?.length) return;
+      const assets = res.assets;
+      if (assets.length === 1) {
+        const a = assets[0];
+        setCropState({ uri: a.uri, w: a.width ?? 0, h: a.height ?? 0, targetId: null });
+        return;
+      }
+      let nextId = draftImages.length ? Math.max(...draftImages) + 1 : 0;
+      const ids: number[] = [];
+      const addUris: PhotoUris = {};
+      for (const a of assets) {
+        const id = nextId++;
+        ids.push(id);
+        addUris[String(id)] = a.uri;
+      }
+      setDraftImages((prev) => [...prev, ...ids]);
+      setDraftUris((m) => ({ ...m, ...addUris }));
+    } catch {
+      // dismissed / no library access — leave the draft unchanged
+    } finally {
+      setMode('none');
+    }
+  };
+
   // The crop editor handed back a cropped uri + chosen frame ratio; place it into the target frame.
   const applyCrop = (croppedUri: string, ratio: number) => {
     if (!cropState) return;
@@ -438,8 +467,8 @@ export function PhotoBlockEditor({
         <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} uris={draftUris} ratios={draftRatios} />,
       )}
       <View style={s.actionsRow}>
-        <Pressable onPress={() => pickRaw(null)} style={[s.addImgBtn, { borderColor: colors.onBgDim }]} accessibilityLabel="Add image">
-          <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>
+        <Pressable onPress={pickMany} style={[s.addImgBtn, { borderColor: colors.onBgDim }]} accessibilityLabel="Add photos">
+          <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add photos</Text>
         </Pressable>
       </View>
       {draftImages.length ? (

@@ -323,6 +323,7 @@ export function PhotoBlockEditor({
   onDragActive,
   uris,
   ratios,
+  renderStage,
 }: {
   images: number[];
   format: PhotoVariant;
@@ -332,6 +333,9 @@ export function PhotoBlockEditor({
   onDragActive?: (active: boolean) => void;
   uris?: PhotoUris;
   ratios?: PhotoRatios;
+  // Wrap the photo in the parent's sticker "stage" so decorations anchor to the photo box (stable in
+  // size whether the editor is open or not), not the whole editor — keeps stickers from jumping on close.
+  renderStage?: (node: ReactNode) => ReactNode;
 }) {
   const [draftImages, setDraftImages] = useState<number[]>(images);
   const [draftUris, setDraftUris] = useState<PhotoUris>(uris ?? {});
@@ -430,7 +434,9 @@ export function PhotoBlockEditor({
   return (
     <View>
       {draftImages.length > 1 ? <Text style={[s.dragHint, { color: colors.onBgDim }]}>Press and hold a photo, then drag to rearrange</Text> : null}
-      <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} uris={draftUris} ratios={draftRatios} />
+      {(renderStage ?? ((n) => n))(
+        <DraggablePhotos ids={draftImages} format={format} onReorder={setDraftImages} onDragActive={onDragActive} uris={draftUris} ratios={draftRatios} />,
+      )}
       <View style={s.actionsRow}>
         <Pressable onPress={() => pickRaw(null)} style={[s.addImgBtn, { borderColor: colors.onBgDim }]} accessibilityLabel="Add image">
           <Text style={[s.addImgText, { color: colors.onBg }]}>+ Add image</Text>

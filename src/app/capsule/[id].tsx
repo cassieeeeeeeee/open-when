@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   PanResponder,
@@ -723,6 +723,34 @@ export default function CapsuleScreen() {
     });
   };
 
+  // Wrap a block's display content in the sticker "stage" — the box sticker coordinates are normalized
+  // against. It hugs ONLY the photo / text frame / tile (the same size whether or not the editor is
+  // open); edit chrome (the "N photos" label, the editor's own controls, the delete row) stays OUTSIDE
+  // it. That's what stops placed stickers from jumping upward when the editor closes. `live` = this
+  // block is being edited, so its stickers are draggable.
+  const renderStage = (i: number, content: ReactNode, live: boolean) => (
+    <View
+      ref={(el) => {
+        stageRefs.current[i] = el;
+      }}
+      style={styles.stickerStage}
+      onLayout={(e) => setStageSize(i, e.nativeEvent.layout.width, e.nativeEvent.layout.height)}>
+      {content}
+      <StickerLayer
+        stickers={contents[i]?.stickers ?? []}
+        size={stageSizes[i]}
+        editable={live}
+        selectedId={selectedStickerId}
+        onSelect={setSelectedStickerId}
+        onUpdate={(sid, patch) => updateSticker(i, sid, patch)}
+        onRemove={(sid) => removeSticker(i, sid)}
+        onMoveRelease={(sid, sx, sy, nx, ny) => onStickerMoveRelease(i, sid, sx, sy, nx, ny)}
+        onGrab={measurePalette}
+        onDragActive={setScrollLocked}
+      />
+    </View>
+  );
+
   // ---- Sealed capsule ----
   if (!showReveal) {
     const tone = TONES[capsule?.tone ?? 'pink'];
@@ -807,6 +835,7 @@ export default function CapsuleScreen() {
               colors={{ onBg: sec.onBg, onBgDim: sec.onBgDim, base: sec.colors[0] }}
               uris={uris}
               ratios={ratios}
+              renderStage={(node) => renderStage(index, node, true)}
               onSave={(patch) => {
                 savePhotoBlock(index, patch);
                 setEditingIndex(null);
@@ -821,17 +850,21 @@ export default function CapsuleScreen() {
               {imgs.length > 1 ? (
                 <Text style={[styles.dragHintReveal, { color: sec.onBgDim }]}>Press and hold a photo to rearrange</Text>
               ) : null}
-              <DraggablePhotos
-                ids={imgs}
-                format={fmt}
-                onReorder={(next) => updateItem(index, { images: next })}
-                onDragActive={setScrollLocked}
-                uris={uris}
-                ratios={ratios}
-              />
+              {renderStage(
+                index,
+                <DraggablePhotos
+                  ids={imgs}
+                  format={fmt}
+                  onReorder={(next) => updateItem(index, { images: next })}
+                  onDragActive={setScrollLocked}
+                  uris={uris}
+                  ratios={ratios}
+                />,
+                false,
+              )}
             </>
           ) : (
-            <RevealPhotos images={imgs} variant={fmt} uris={uris} ratios={ratios} />
+            renderStage(index, <RevealPhotos images={imgs} variant={fmt} uris={uris} ratios={ratios} />, false)
           )}
           {deleteRow}
         </View>
@@ -841,11 +874,15 @@ export default function CapsuleScreen() {
       return (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
-          <LinearGradient colors={[sec.colors[1], sec.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.videoTile}>
-            <View style={styles.playBadge}>
-              <PlayIcon size={18} color={OW.dark} />
-            </View>
-          </LinearGradient>
+          {renderStage(
+            index,
+            <LinearGradient colors={[sec.colors[1], sec.colors[2]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.videoTile}>
+              <View style={styles.playBadge}>
+                <PlayIcon size={18} color={OW.dark} />
+              </View>
+            </LinearGradient>,
+            editing,
+          )}
           {deleteRow}
         </View>
       );
@@ -853,8 +890,14 @@ export default function CapsuleScreen() {
     if (item.type === 'playlist') {
       return (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
-          {item.preview ? <Text style={[styles.sectionText, { color: sec.onBgDim }]}>{item.preview}</Text> : null}
+          {renderStage(
+            index,
+            <>
+              <Text style={[styles.sectionLabel, { color: sec.onBgDim }]}>{item.label}</Text>
+              {item.preview ? <Text style={[styles.sectionText, { color: sec.onBgDim }]}>{item.preview}</Text> : null}
+            </>,
+            editing,
+          )}
           {deleteRow}
         </View>
       );
@@ -881,16 +924,17 @@ export default function CapsuleScreen() {
             accent={sec.colors[0]}
             bodyOverride={bodyOverride}
             placeholderColor={noneFrame ? sec.onBgDim : undefined}
+            renderStage={(node) => renderStage(index, node, true)}
             onCommit={(t) => updateItem(index, { preview: t })}
             onClose={() => setEditingIndex(null)}
           />
         ) : editable ? (
           // Tap the text itself to edit it — no need to hit the pencil first.
           <Pressable onPress={() => setEditingIndex(index)} accessibilityLabel="Edit text">
-            {frameView}
+            {renderStage(index, frameView, false)}
           </Pressable>
         ) : (
-          frameView
+          renderStage(index, frameView, false)
         )}
         {deleteRow}
       </View>
@@ -1014,26 +1058,7 @@ export default function CapsuleScreen() {
                     });
                   }}>
                   {editable && i > 0 ? <View style={[styles.divider, { backgroundColor: dividerColor }]} /> : null}
-                  <View
-                    ref={(el) => {
-                      stageRefs.current[i] = el;
-                    }}
-                    style={styles.stickerStage}
-                    onLayout={(e) => setStageSize(i, e.nativeEvent.layout.width, e.nativeEvent.layout.height)}>
-                    {renderBlock(item, i, sec)}
-                    <StickerLayer
-                      stickers={item.stickers ?? []}
-                      size={stageSizes[i]}
-                      editable={editing}
-                      selectedId={selectedStickerId}
-                      onSelect={setSelectedStickerId}
-                      onUpdate={(sid, patch) => updateSticker(i, sid, patch)}
-                      onRemove={(sid) => removeSticker(i, sid)}
-                      onMoveRelease={(sid, sx, sy, nx, ny) => onStickerMoveRelease(i, sid, sx, sy, nx, ny)}
-                      onGrab={measurePalette}
-                      onDragActive={setScrollLocked}
-                    />
-                  </View>
+                  {renderBlock(item, i, sec)}
                   {editable ? (
                     <View style={[styles.itemBar, sectionOverPhoto && styles.itemBarOnPhoto]}>
                       <Pressable onPress={() => moveItem(i, -1)} disabled={i === 0} hitSlop={8}>

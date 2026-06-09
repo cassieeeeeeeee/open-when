@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, type TextStyle, View } from 'react-native';
 
 import { frameBody, framePlaceholder, TextFrameShell, type TextFrameId } from '@/components/openwhen/TextFrame';
@@ -17,6 +17,7 @@ export function NoteEditor({
   accent,
   bodyOverride,
   placeholderColor,
+  renderStage,
   onCommit,
   onClose,
 }: {
@@ -26,6 +27,9 @@ export function NoteEditor({
   accent: string;
   bodyOverride?: TextStyle;
   placeholderColor?: string;
+  // Wrap the framed text in the parent's sticker "stage" so decorations anchor to the frame box (the
+  // same size shown in the reveal), not the editor's buttons — keeps stickers from shifting on close.
+  renderStage?: (node: ReactNode) => ReactNode;
   onCommit: (text: string) => void; // persist the text (no close)
   onClose: () => void; // close the editor
 }) {
@@ -53,17 +57,19 @@ export function NoteEditor({
   };
   return (
     <View>
-      <TextFrameShell frameId={frameId} accent={accent}>
-        <TextInput
-          style={[frameBody(frameId), s.input, bodyOverride]}
-          value={text}
-          onChangeText={setText}
-          multiline
-          autoFocus
-          placeholder="Write your note…"
-          placeholderTextColor={placeholderColor ?? framePlaceholder(frameId)}
-        />
-      </TextFrameShell>
+      {(renderStage ?? ((n) => n))(
+        <TextFrameShell frameId={frameId} accent={accent}>
+          <TextInput
+            style={[frameBody(frameId), s.input, bodyOverride]}
+            value={text}
+            onChangeText={setText}
+            multiline
+            autoFocus
+            placeholder="Write your note…"
+            placeholderTextColor={placeholderColor ?? framePlaceholder(frameId)}
+          />
+        </TextFrameShell>,
+      )}
       <View style={s.row}>
         <Pressable onPress={cancel} style={s.cancel} hitSlop={6}>
           <Text style={[s.cancelText, { color: colors.onBgDim }]}>Cancel</Text>
